@@ -515,7 +515,7 @@ export default function PatientDetails({ patient, onUpdate, onDelete }: PatientD
                           animate={{ opacity: 1 }}
                           exit={{ opacity: 0 }}
                           transition={{ duration: 0 }}
-                          className="bg-white rounded-3xl border border-natural-200 shadow-xl overflow-hidden flex flex-col"
+                          className="bg-white rounded-3xl border border-natural-200 shadow-xl flex flex-col"
                         >
                           {(() => {
                             const check = patient.dailyChecks[currentCheckIndex];
@@ -523,7 +523,7 @@ export default function PatientDetails({ patient, onUpdate, onDelete }: PatientD
                             return (
                               <>
                                 {/* Number Picker Date Selector */}
-                                <div className="bg-natural-50/50 border-b border-natural-100 py-4 px-4 flex items-center group/nav overflow-hidden">
+                                <div className="bg-natural-50/50 border-b border-natural-100 py-4 px-4 flex items-center group/nav">
                                   {/* Left Side Buttons */}
                                   <div className="flex items-center gap-1.5 z-30 mr-2 shrink-0">
                                     <button 
@@ -544,7 +544,51 @@ export default function PatientDetails({ patient, onUpdate, onDelete }: PatientD
                                   </div>
 
                                   {/* Picker Area with Scoped Indicators */}
-                                  <div className="flex-1 relative flex items-center overflow-hidden">
+                                  <div className="flex-1 relative flex items-center">
+                                    {/* Dropdown Menu - Moved outside scroll territory to avoid clipping */}
+                                    <AnimatePresence>
+                                      {isDatePickerOpen && (
+                                        <motion.div
+                                          initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                                          exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                                          className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-48 bg-white rounded-xl shadow-2xl border border-natural-200 z-[100] py-2 max-h-64 overflow-y-auto no-scrollbar"
+                                        >
+                                          <div className="px-3 py-1 mb-1 border-b border-natural-100">
+                                            <p className="text-[9px] font-bold text-natural-400 uppercase tracking-widest text-left">Select Date</p>
+                                          </div>
+                                          {[...patient.dailyChecks].reverse().map((dropCheck) => {
+                                            const originalIndex = patient.dailyChecks.findIndex(dc => dc.id === dropCheck.id);
+                                            return (
+                                              <div 
+                                                key={dropCheck.id}
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  updateSelectedDate(originalIndex);
+                                                  setIsDatePickerOpen(false);
+                                                }}
+                                                className={`px-3 py-2 text-left hover:bg-sage-50 transition-colors cursor-pointer flex justify-between items-center ${
+                                                  originalIndex === currentCheckIndex ? 'bg-sage-50 text-sage-600' : 'text-natural-600'
+                                                }`}
+                                              >
+                                                <div className="flex flex-col">
+                                                  <span className="text-xs font-bold leading-none">
+                                                    {format(new Date(dropCheck.date), 'MMM dd, yyyy')}
+                                                  </span>
+                                                  <span className="text-[10px] opacity-60">
+                                                    {format(new Date(dropCheck.date), 'HH:mm (EEE)')}
+                                                  </span>
+                                                </div>
+                                                {originalIndex === currentCheckIndex && (
+                                                  <Clock className="w-3 h-3 text-sage-500" />
+                                                )}
+                                              </div>
+                                            );
+                                          })}
+                                        </motion.div>
+                                      )}
+                                    </AnimatePresence>
+
                                     {/* Centered Selection Notch */}
                                     <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[80px] h-1 bg-sage-500 rounded-b-full z-30 opacity-50 pointer-events-none" />
                                     <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[80px] h-1 bg-sage-500 rounded-t-full z-30 opacity-50 pointer-events-none" />
@@ -594,50 +638,6 @@ export default function PatientDetails({ patient, onUpdate, onDelete }: PatientD
                                               </span>
                                               {isActive && <ChevronDown className="w-2 h-2 opacity-60" />}
                                             </div>
-
-                                            {/* Dropdown Menu */}
-                                            <AnimatePresence>
-                                              {isActive && isDatePickerOpen && (
-                                                <motion.div
-                                                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                                                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                                                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                                                  className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-48 bg-white rounded-xl shadow-2xl border border-natural-200 z-[100] py-2 max-h-64 overflow-y-auto no-scrollbar"
-                                                >
-                                                  <div className="px-3 py-1 mb-1 border-b border-natural-100">
-                                                    <p className="text-[9px] font-bold text-natural-400 uppercase tracking-widest text-left">Select Date</p>
-                                                  </div>
-                                                  {[...patient.dailyChecks].reverse().map((dropCheck) => {
-                                                    const originalIndex = patient.dailyChecks.findIndex(dc => dc.id === dropCheck.id);
-                                                    return (
-                                                      <div 
-                                                        key={dropCheck.id}
-                                                        onClick={(e) => {
-                                                          e.stopPropagation();
-                                                          updateSelectedDate(originalIndex);
-                                                          setIsDatePickerOpen(false);
-                                                        }}
-                                                        className={`px-3 py-2 text-left hover:bg-sage-50 transition-colors cursor-pointer flex justify-between items-center ${
-                                                          originalIndex === currentCheckIndex ? 'bg-sage-50 text-sage-600' : 'text-natural-600'
-                                                        }`}
-                                                      >
-                                                        <div className="flex flex-col">
-                                                          <span className="text-xs font-bold leading-none">
-                                                            {format(new Date(dropCheck.date), 'MMM dd, yyyy')}
-                                                          </span>
-                                                          <span className="text-[10px] opacity-60">
-                                                            {format(new Date(dropCheck.date), 'HH:mm (EEE)')}
-                                                          </span>
-                                                        </div>
-                                                        {originalIndex === currentCheckIndex && (
-                                                          <Clock className="w-3 h-3 text-sage-500" />
-                                                        )}
-                                                      </div>
-                                                    );
-                                                  })}
-                                                </motion.div>
-                                              )}
-                                            </AnimatePresence>
                                           </button>
                                         );
                                       })}
