@@ -86,6 +86,13 @@ export default function App() {
     setPatients(prev => prev.map(p => p.id === updatedPatient.id ? updatedPatient : p));
   };
 
+  const handleDeletePatient = (id: string) => {
+    if (confirm('確定要刪除這位病患嗎？這是不可逆的。')) {
+      setPatients(prev => prev.filter(p => p.id !== id));
+      setSelectedPatientId(null);
+    }
+  };
+
   const handleAddPatient = (newPatient: Patient) => {
     setPatients(prev => [newPatient, ...prev]);
     setShowAddForm(false);
@@ -255,6 +262,7 @@ export default function App() {
                 <PatientDetails 
                   patient={selectedPatient} 
                   onUpdate={handleUpdatePatient}
+                  onDelete={handleDeletePatient}
                 />
               </motion.div>
             ) : null}

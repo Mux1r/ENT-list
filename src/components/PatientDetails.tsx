@@ -11,23 +11,22 @@ import {
   CloudLightning,
   Droplets,
   Wind,
-  FileEdit
+  Trash2
 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { Patient, ENTChecklist } from '../types';
+import { Patient, ENTChecklist, Gender } from '../types';
 import DailyChecklistForm from './DailyChecklistForm';
-import PatientForm from './PatientForm';
 import { format } from 'date-fns';
 
 interface PatientDetailsProps {
   patient: Patient;
   onUpdate: (patient: Patient) => void;
+  onDelete: (id: string) => void;
 }
 
-export default function PatientDetails({ patient, onUpdate }: PatientDetailsProps) {
+export default function PatientDetails({ patient, onUpdate, onDelete }: PatientDetailsProps) {
   const [activeTab, setActiveTab] = useState<'profile' | 'checklist'>('profile');
   const [showChecklistForm, setShowChecklistForm] = useState(false);
-  const [showEditForm, setShowEditForm] = useState(false);
 
   const handleAddCheck = (newCheck: ENTChecklist) => {
     onUpdate({
@@ -37,22 +36,17 @@ export default function PatientDetails({ patient, onUpdate }: PatientDetailsProp
     setShowChecklistForm(false);
   };
 
+  const handleFieldChange = (field: keyof Patient, value: any) => {
+    onUpdate({
+      ...patient,
+      [field]: value
+    });
+  };
+
   const currentSummary = patient.dailyChecks[0];
 
   return (
     <div className="space-y-6 text-natural-600">
-      {/* Patient Edit Form Overlay */}
-      {showEditForm && (
-        <PatientForm 
-          patient={patient}
-          onSubmit={(updated) => {
-            onUpdate(updated);
-            setShowEditForm(false);
-          }}
-          onCancel={() => setShowEditForm(false)}
-        />
-      )}
-
       {/* Patient Header Card */}
       <div className="bg-white rounded-2xl p-8 border border-natural-200 shadow-sm flex flex-col md:flex-row gap-8 items-start relative overflow-hidden">
         <div className="absolute top-0 right-0 w-32 h-32 bg-natural-100 -mr-16 -mt-16 rounded-full opacity-50" />
@@ -63,32 +57,87 @@ export default function PatientDetails({ patient, onUpdate }: PatientDetailsProp
 
         <div className="relative flex-1 grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="md:col-span-2">
-            <div className="flex gap-4 items-center mb-2">
-              <span className="px-3 py-1 rounded-md bg-sage-50 text-sage-600 border border-sage-100 text-xs font-bold uppercase tracking-wider">
-                Bed {patient.bedNumber}
-              </span>
-              <h2 className="text-3xl font-serif font-bold text-natural-900">{patient.name}</h2>
-              <button 
-                onClick={() => setShowEditForm(true)}
-                className="p-1.5 text-natural-300 hover:text-sage-500 transition-colors"
-                title="編輯資料 Edit"
-              >
-                <FileEdit className="w-4 h-4" />
-              </button>
-              <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-widest border ${
-                patient.status === 'Stable' 
-                  ? 'bg-sage-50 text-sage-700 border-sage-100' 
-                  : 'bg-terracotta-50 text-terracotta-500 border-terracotta-100'
-              }`}>
-                {patient.status}
-              </span>
+            <div className="flex gap-4 items-center mb-3">
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] items-center font-bold text-natural-300 uppercase tracking-widest pl-1">Bed No.</span>
+                <input 
+                  value={patient.bedNumber}
+                  onChange={(e) => handleFieldChange('bedNumber', e.target.value)}
+                  className="w-24 px-2 py-1 rounded bg-sage-50 text-sage-600 border border-sage-100 text-xs font-bold uppercase tracking-wider focus:ring-1 focus:ring-sage-500 focus:outline-hidden"
+                />
+              </div>
+              <div className="flex flex-col gap-1 flex-1">
+                <span className="text-[10px] font-bold text-natural-300 uppercase tracking-widest pl-1">Patient Name</span>
+                <input 
+                  value={patient.name}
+                  onChange={(e) => handleFieldChange('name', e.target.value)}
+                  className="text-3xl font-serif font-bold text-natural-900 bg-transparent border-b border-transparent hover:border-natural-200 focus:border-sage-500 focus:outline-hidden w-full"
+                />
+              </div>
+              <div className="flex flex-col gap-4">
+                 <button 
+                  onClick={() => onDelete(patient.id)}
+                  className="p-2 text-natural-300 hover:text-terracotta-500 transition-colors self-start"
+                  title="刪除病患 Delete"
+                >
+                  <Trash2 className="w-5 h-5" />
+                </button>
+                <select 
+                  value={patient.status}
+                  onChange={(e) => handleFieldChange('status', e.target.value as any)}
+                  className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-widest border focus:outline-hidden transition-all ${
+                    patient.status === 'Stable' 
+                      ? 'bg-sage-50 text-sage-700 border-sage-100' 
+                      : patient.status === 'Critical' 
+                        ? 'bg-terracotta-50 text-terracotta-700 border-terracotta-100'
+                        : 'bg-clinical-50 text-clinical-700 border-clinical-100'
+                  }`}
+                >
+                  <option value="Stable">Stable</option>
+                  <option value="Critical">Critical</option>
+                  <option value="Discharge Pending">Discharge Pending</option>
+                </select>
+              </div>
             </div>
-            <div className="flex gap-4 text-natural-400 text-xs font-medium">
-              <span>Chart No: {patient.chartNumber}</span>
-              <span>·</span>
-              <span>{patient.gender === 'Male' ? 'Male' : 'Female'} · {patient.age}Y</span>
-              <span>·</span>
-              <span>Admitted: {patient.admissionDate}</span>
+            <div className="flex flex-wrap gap-4 text-natural-400 text-xs font-medium">
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-bold text-natural-300 uppercase tracking-widest">Chart No.</span>
+                <input 
+                  value={patient.chartNumber}
+                  onChange={(e) => handleFieldChange('chartNumber', e.target.value)}
+                  className="bg-transparent border-b border-transparent hover:border-natural-200 focus:border-sage-500 focus:outline-hidden"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-bold text-natural-300 uppercase tracking-widest">Gender</span>
+                <select 
+                  value={patient.gender}
+                  onChange={(e) => handleFieldChange('gender', e.target.value as Gender)}
+                  className="bg-transparent border-b border-transparent hover:border-natural-200 focus:border-sage-500 focus:outline-hidden"
+                >
+                  <option value="Male">Male</option>
+                  <option value="Female">Female</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-bold text-natural-300 uppercase tracking-widest">Age</span>
+                <input 
+                  type="number"
+                  value={patient.age}
+                  onChange={(e) => handleFieldChange('age', parseInt(e.target.value) || 0)}
+                  className="w-12 bg-transparent border-b border-transparent hover:border-natural-200 focus:border-sage-500 focus:outline-hidden"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-bold text-natural-300 uppercase tracking-widest">Adm. Date</span>
+                <input 
+                  type="date"
+                  value={patient.admissionDate}
+                  onChange={(e) => handleFieldChange('admissionDate', e.target.value)}
+                  className="bg-transparent border-b border-transparent hover:border-natural-200 focus:border-sage-500 focus:outline-hidden"
+                />
+              </div>
             </div>
           </div>
           
@@ -152,15 +201,19 @@ export default function PatientDetails({ patient, onUpdate }: PatientDetailsProp
                 <div className="space-y-6">
                   <div>
                     <h4 className="text-[10px] font-bold text-natural-400 uppercase tracking-widest mb-2 px-1">Admission Diagnosis</h4>
-                    <p className="text-natural-900 bg-natural-50 p-4 rounded-xl border border-natural-200 italic font-serif leading-relaxed">
-                      {patient.admissionDiagnosis}
-                    </p>
+                    <textarea 
+                      value={patient.admissionDiagnosis}
+                      onChange={(e) => handleFieldChange('admissionDiagnosis', e.target.value)}
+                      className="w-full text-natural-900 bg-natural-50 p-4 rounded-xl border border-natural-200 italic font-serif leading-relaxed min-h-[80px] focus:ring-1 focus:ring-sage-500 focus:outline-hidden"
+                    />
                   </div>
                   <div>
                     <h4 className="text-[10px] font-bold text-natural-400 uppercase tracking-widest mb-2 px-1">Preliminary Diagnosis</h4>
-                    <p className="text-natural-900 bg-natural-50 p-4 rounded-xl border border-natural-200 italic font-serif leading-relaxed">
-                      {patient.preliminaryDiagnosis}
-                    </p>
+                    <textarea 
+                      value={patient.preliminaryDiagnosis}
+                      onChange={(e) => handleFieldChange('preliminaryDiagnosis', e.target.value)}
+                      className="w-full text-natural-900 bg-natural-50 p-4 rounded-xl border border-natural-200 italic font-serif leading-relaxed min-h-[80px] focus:ring-1 focus:ring-sage-500 focus:outline-hidden"
+                    />
                   </div>
                 </div>
               </div>
@@ -169,9 +222,12 @@ export default function PatientDetails({ patient, onUpdate }: PatientDetailsProp
                 <div className="flex items-center gap-3 mb-6 border-b border-natural-100 pb-4">
                   <h3 className="text-sm font-bold uppercase tracking-widest text-sage-600">Treatment Plan</h3>
                 </div>
-                <div className="bg-[#fdfbf7] p-6 rounded-xl border-l-4 border-sage-500 whitespace-pre-wrap leading-loose text-natural-800 text-sm font-medium italic">
-                  {patient.treatmentPlan}
-                </div>
+                <textarea 
+                  value={patient.treatmentPlan}
+                  onChange={(e) => handleFieldChange('treatmentPlan', e.target.value)}
+                  rows={6}
+                  className="w-full bg-[#fdfbf7] p-6 rounded-xl border-l-4 border-sage-500 whitespace-pre-wrap leading-loose text-natural-800 text-sm font-medium italic focus:outline-hidden"
+                />
               </div>
             </div>
 
