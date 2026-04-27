@@ -39,3 +39,11 @@ h1, .font-serif-clinical {
 .font-display-modern {
   @apply font-display;
 }
+
+@utility no-scrollbar {
+  &::-webkit-scrollbar {
+    display: none;
+  }
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}

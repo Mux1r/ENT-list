@@ -7,6 +7,7 @@ import {
   Plus, 
   Calendar,
   AlertCircle,
+  Clock,
   Thermometer,
   CloudLightning,
   Droplets,
@@ -36,19 +37,32 @@ export default function PatientDetails({ patient, onUpdate, onDelete }: PatientD
   const [activeTab, setActiveTab] = useState<'profile' | 'checklist'>('profile');
   const [showChecklistForm, setShowChecklistForm] = useState(false);
   const [editingCheckId, setEditingCheckId] = useState<string | null>(null);
-  const [currentCheckIndex, setCurrentCheckIndex] = useState(0);
+  const [currentCheckIndex, setCurrentCheckIndex] = useState(patient.dailyChecks.length - 1);
+  const [direction, setDirection] = useState(0); // 1 for next, -1 for prev
   const [isGeneratingPearls, setIsGeneratingPearls] = useState(false);
-  const timelineRef = useRef<HTMLDivElement>(null);
 
-  // Auto-centering the timeline
+  // Update direction for slide animation
+  const lastIndex = useRef(currentCheckIndex);
   useEffect(() => {
-    if (timelineRef.current) {
-      const activeElement = timelineRef.current.querySelector('[data-active="true"]');
-      if (activeElement) {
-        activeElement.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-      }
+    if (currentCheckIndex > lastIndex.current) {
+      setDirection(1);
+    } else if (currentCheckIndex < lastIndex.current) {
+      setDirection(-1);
     }
-  }, [currentCheckIndex, activeTab]);
+    lastIndex.current = currentCheckIndex;
+  }, [currentCheckIndex]);
+
+  const handleNext = () => {
+    if (currentCheckIndex < patient.dailyChecks.length - 1) {
+      setCurrentCheckIndex(prev => prev + 1);
+    }
+  };
+
+  const handlePrev = () => {
+    if (currentCheckIndex > 0) {
+      setCurrentCheckIndex(prev => prev - 1);
+    }
+  };
 
   // Local state to handle smooth typing (IME)
   const [localFields, setLocalFields] = useState({
@@ -443,112 +457,58 @@ export default function PatientDetails({ patient, onUpdate, onDelete }: PatientD
                 </div>
               ) : (
                 <>
-                  {/* Date Timeline */}
-                  <div className="relative">
-                    <div 
-                      ref={timelineRef}
-                      className="bg-white rounded-2xl p-6 border border-natural-200 shadow-sm overflow-x-auto no-scrollbar scroll-smooth snap-x snap-mandatory"
-                      style={{ 
-                        maskImage: 'linear-gradient(to right, transparent, black 15%, black 85%, transparent)',
-                        WebkitMaskImage: 'linear-gradient(to right, transparent, black 15%, black 85%, transparent)'
-                      }}
-                    >
-                      <div className="flex items-center gap-6 px-[40%] min-w-max">
-                        {[...patient.dailyChecks].reverse().map((check, revIdx) => {
-                          const originalIdx = (patient.dailyChecks.length - 1) - revIdx;
-                          const isActive = currentCheckIndex === originalIdx;
-                          return (
-                            <motion.button
-                              key={check.id}
-                              data-active={isActive}
-                              disabled={editingCheckId !== null}
-                              onClick={() => setCurrentCheckIndex(originalIdx)}
-                              initial={false}
-                              animate={{ 
-                                scale: isActive ? 1.1 : 0.9,
-                                opacity: isActive ? 1 : 0.4
-                              }}
-                              className={`snap-center relative flex flex-col items-center p-4 rounded-2xl transition-all min-w-[90px] ${
-                                isActive 
-                                  ? 'bg-sage-600 text-white shadow-lg ring-4 ring-sage-50' 
-                                  : 'bg-natural-50 text-natural-400 border border-natural-200'
-                              }`}
-                            >
-                              <span className={`text-[10px] font-bold uppercase tracking-widest mb-1 ${isActive ? 'text-sage-100' : 'text-natural-400'}`}>
-                                {format(new Date(check.date), 'EEE')}
-                              </span>
-                              <span className="text-xl font-serif font-bold">
-                                {format(new Date(check.date), 'dd')}
-                              </span>
-                              <span className={`text-[9px] font-bold mt-1 ${isActive ? 'text-sage-200' : 'text-natural-300'}`}>
-                                {format(new Date(check.date), 'MMM')}
-                              </span>
-                              
-                              {isActive && (
-                                <motion.div 
-                                  layoutId="active-date-glow"
-                                  className="absolute inset-0 bg-sage-400 rounded-2xl -z-10 blur-md opacity-20"
-                                />
-                              )}
-                            </motion.button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    
-                    {/* Floating active indicator */}
-                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-px h-full bg-sage-200 pointer-events-none opacity-20" />
-                  </div>
-
                   {/* Carousel Content */}
-                  <div className="relative group">
-                    {/* Navigation Arrows */}
-                    <div className="absolute top-1/2 -left-4 -translate-y-1/2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button 
-                        onClick={() => setCurrentCheckIndex(prev => Math.max(0, prev - 1))}
-                        disabled={currentCheckIndex === 0 || editingCheckId !== null}
-                        className="bg-white p-3 rounded-full shadow-lg border border-natural-200 text-natural-400 hover:text-sage-600 disabled:opacity-0 transition-all"
-                      >
-                        <ChevronLeft className="w-5 h-5" />
-                      </button>
-                    </div>
-                    <div className="absolute top-1/2 -right-4 -translate-y-1/2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button 
-                        onClick={() => setCurrentCheckIndex(prev => Math.min(patient.dailyChecks.length - 1, prev + 1))}
-                        disabled={currentCheckIndex === patient.dailyChecks.length - 1 || editingCheckId !== null}
-                        className="bg-white p-3 rounded-full shadow-lg border border-natural-200 text-natural-400 hover:text-sage-600 disabled:opacity-0 transition-all"
-                      >
-                        <ChevronRight className="w-5 h-5" />
-                      </button>
-                    </div>
-
+                  <div className="relative group/carousel">
                     <AnimatePresence mode="wait">
-                      <motion.div
-                        key={patient.dailyChecks[currentCheckIndex].id}
-                        initial={{ opacity: 0, x: 20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        exit={{ opacity: 0, x: -20 }}
-                        transition={{ type: "spring", damping: 25, stiffness: 200 }}
-                        drag={editingCheckId === null ? "x" : false}
-                        dragConstraints={{ left: 0, right: 0 }}
-                        dragElastic={0.2}
-                        onDragEnd={(_, info) => {
-                          if (editingCheckId !== null) return;
-                          if (info.offset.x > 100 && currentCheckIndex > 0) {
-                            setCurrentCheckIndex(prev => prev - 1);
-                          } else if (info.offset.x < -100 && currentCheckIndex < patient.dailyChecks.length - 1) {
-                            setCurrentCheckIndex(prev => prev + 1);
-                          }
-                        }}
-                      >
-                        {(() => {
-                          const check = patient.dailyChecks[currentCheckIndex];
-                          return (
-                            <div className="bg-white rounded-2xl p-8 border border-natural-200 shadow-sm flex flex-col lg:flex-row gap-8 relative group">
-                              <div className="shrink-0 flex flex-col items-center justify-center p-4 bg-natural-50 rounded-xl border border-natural-200 min-w-[140px] shadow-inner font-bold">
-                                <Calendar className="w-4 h-4 text-natural-400 mb-2" />
-                                <span className="text-lg font-serif text-natural-900">{format(new Date(check.date), 'MMM dd')}</span>
-                                <span className="text-[10px] text-natural-400 uppercase tracking-widest">{format(new Date(check.date), 'HH:mm')}</span>
+                      {patient.dailyChecks[currentCheckIndex] ? (
+                        <motion.div
+                          key={patient.dailyChecks[currentCheckIndex].id}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0 }}
+                          className="bg-white rounded-3xl border border-natural-200 shadow-xl overflow-hidden flex flex-col"
+                        >
+                          {(() => {
+                            const check = patient.dailyChecks[currentCheckIndex];
+                            if (!check) return null;
+                            return (
+                              <>
+                                {/* Simplified Date Navigator */}
+                                <div className="bg-natural-50/50 border-b border-natural-100 py-6 px-4 relative flex items-center justify-center gap-12 group/nav">
+                                  <button 
+                                    onClick={handlePrev}
+                                    disabled={currentCheckIndex <= 0 || editingCheckId !== null}
+                                    className="p-3 rounded-full bg-white border border-natural-200 shadow-sm hover:border-sage-300 hover:text-sage-600 disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer group/btn"
+                                    title="Older record"
+                                  >
+                                    <ChevronLeft className="w-5 h-5 group-hover/btn:-translate-x-0.5 transition-transform" />
+                                  </button>
+
+                                  <div className="flex flex-col items-center">
+                                    <div className="flex items-center gap-3 bg-white px-8 py-3 rounded-2xl border border-sage-100 shadow-sm relative">
+                                      <Calendar className="w-4 h-4 text-sage-500" />
+                                      <span className="text-sm font-bold text-natural-800 tracking-tight">
+                                        {format(new Date(patient.dailyChecks[currentCheckIndex].date), 'yyyy-MM-dd')}
+                                      </span>
+                                      <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-4 h-1 bg-sage-500 rounded-full" />
+                                    </div>
+                                    <div className="text-[10px] uppercase tracking-widest text-natural-400 mt-2 font-black">
+                                      Record {currentCheckIndex + 1} of {patient.dailyChecks.length}
+                                    </div>
+                                  </div>
+
+                                  <button 
+                                    onClick={handleNext}
+                                    disabled={currentCheckIndex >= patient.dailyChecks.length - 1 || editingCheckId !== null}
+                                    className="p-3 rounded-full bg-white border border-natural-200 shadow-sm hover:border-sage-300 hover:text-sage-600 disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer group/btn"
+                                    title="Newer record"
+                                  >
+                                    <ChevronRight className="w-5 h-5 group-hover/btn:translate-x-0.5 transition-transform" />
+                                  </button>
+                                </div>
+
+                                <div className="p-6 md:p-8 flex flex-col gap-6 relative group/content">
                                 <button 
                                   onClick={() => {
                                     if (window.confirm('Are you sure you want to delete this daily ward round record?')) {
@@ -557,19 +517,17 @@ export default function PatientDetails({ patient, onUpdate, onDelete }: PatientD
                                         ...patient,
                                         dailyChecks: newChecks
                                       });
-                                      // Adjust index if we deleted the last item
                                       if (currentCheckIndex >= newChecks.length) {
                                         setCurrentCheckIndex(Math.max(0, newChecks.length - 1));
                                       }
                                     }
                                   }}
-                                  className="mt-4 p-1.5 text-natural-300 hover:text-terracotta-500 transition-colors opacity-0 group-hover:opacity-100"
+                                  className="absolute top-4 right-4 p-2 text-natural-300 hover:text-terracotta-500 transition-colors opacity-0 group-hover/content:opacity-100 bg-white border border-natural-100 rounded-full shadow-sm hover:shadow-md z-10"
                                 >
                                   <Trash2 className="w-3.5 h-3.5" />
                                 </button>
-                              </div>
 
-                              <div className="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                                  <Metric 
                                    label="Bleeding" 
                                    value={check.bleeding} 
@@ -721,9 +679,15 @@ export default function PatientDetails({ patient, onUpdate, onDelete }: PatientD
                                 </ul>
                               </div>
                             </div>
-                          );
-                        })()}
-                      </motion.div>
+                          </>
+                        );
+                      })()}
+                    </motion.div>
+                      ) : (
+                        <div className="bg-white rounded-3xl border border-natural-200 shadow-xl p-12 text-center text-natural-400">
+                          No records found for this patient.
+                        </div>
+                      )}
                     </AnimatePresence>
                   </div>
                 </>
