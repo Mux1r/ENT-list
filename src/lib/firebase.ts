@@ -5,7 +5,9 @@ import {
   GoogleAuthProvider, 
   onAuthStateChanged,
   signOut,
-  User
+  User,
+  setPersistence,
+  browserLocalPersistence
 } from 'firebase/auth';
 import { 
   getFirestore, 
@@ -28,6 +30,12 @@ import firebaseConfig from '../../firebase-applet-config.json';
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 export const auth = getAuth(app);
+
+// Enable local persistence
+setPersistence(auth, browserLocalPersistence).catch((error) => {
+  console.error("Auth persistence error:", error);
+});
+
 const googleProvider = new GoogleAuthProvider();
 
 export enum OperationType {

@@ -34,7 +34,9 @@ service cloud.firestore {
         && data.updatedAt == request.time
         && (data.get('age', 0) is number)
         && (data.get('gender', 'Male') in ['Male', 'Female', 'Other'])
-        && (data.get('status', 'Stable') in ['Stable', 'Critical', 'Discharge Pending']);
+        && (data.get('status', 'Stable') in ['Stable', 'Critical', 'Discharge Pending'])
+        && (data.get('dailyChecks', []) is list)
+        && (data.get('clinicalPearls', []) is list);
     }
 
     function isValidChecklist(data, patientId) {
@@ -57,7 +59,7 @@ service cloud.firestore {
         && incoming().createdAt == existing().createdAt
         && incoming().updatedAt == request.time
         // Action: Field Update
-        && (incoming().diff(existing()).affectedKeys().hasOnly(['name', 'bedNumber', 'age', 'gender', 'chartNumber', 'admissionDate', 'admissionDiagnosis', 'preliminaryDiagnosis', 'treatmentPlan', 'status', 'updatedAt']));
+        && (incoming().diff(existing()).affectedKeys().hasOnly(['name', 'bedNumber', 'age', 'gender', 'chartNumber', 'admissionDate', 'admissionDiagnosis', 'preliminaryDiagnosis', 'treatmentPlan', 'status', 'updatedAt', 'dailyChecks', 'clinicalPearls']));
 
       allow delete: if isSignedIn() && existing().ownerId == request.auth.uid;
 

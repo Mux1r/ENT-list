@@ -27,5 +27,6 @@ export interface Patient {
   preliminaryDiagnosis: string;
   treatmentPlan: string;
   status: 'Stable' | 'Critical' | 'Discharge Pending';
+  clinicalPearls?: string[];
   dailyChecks: ENTChecklist[];
 }

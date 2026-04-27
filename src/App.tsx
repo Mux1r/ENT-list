@@ -143,7 +143,7 @@ export default function App() {
       const { 
         name, bedNumber, age, gender, chartNumber, 
         admissionDate, admissionDiagnosis, preliminaryDiagnosis, 
-        treatmentPlan, status 
+        treatmentPlan, status, dailyChecks, clinicalPearls
       } = updatedPatient;
 
       await updateDoc(patientRef, {
@@ -157,6 +157,8 @@ export default function App() {
         preliminaryDiagnosis,
         treatmentPlan,
         status,
+        dailyChecks,
+        clinicalPearls: clinicalPearls || [],
         updatedAt: serverTimestamp()
       });
     } catch (error) {

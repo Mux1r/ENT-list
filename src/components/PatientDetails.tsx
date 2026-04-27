@@ -11,12 +11,14 @@ import {
   CloudLightning,
   Droplets,
   Wind,
-  Trash2
+  Trash2,
+  RefreshCw
 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { Patient, ENTChecklist, Gender } from '../types';
 import DailyChecklistForm from './DailyChecklistForm';
 import { format } from 'date-fns';
+import { generateClinicalPearls } from '../services/geminiService';
 
 interface PatientDetailsProps {
   patient: Patient;
@@ -27,6 +29,7 @@ interface PatientDetailsProps {
 export default function PatientDetails({ patient, onUpdate, onDelete }: PatientDetailsProps) {
   const [activeTab, setActiveTab] = useState<'profile' | 'checklist'>('profile');
   const [showChecklistForm, setShowChecklistForm] = useState(false);
+  const [isGeneratingPearls, setIsGeneratingPearls] = useState(false);
 
   // Local state to handle smooth typing (IME)
   const [localFields, setLocalFields] = useState({
@@ -69,6 +72,18 @@ export default function PatientDetails({ patient, onUpdate, onDelete }: PatientD
       dailyChecks: [newCheck, ...patient.dailyChecks]
     });
     setShowChecklistForm(false);
+  };
+
+  const handleRefreshPearls = async () => {
+    setIsGeneratingPearls(true);
+    try {
+      const pearls = await generateClinicalPearls(patient);
+      onUpdate({ ...patient, clinicalPearls: pearls });
+    } catch (error) {
+      console.error("Refresh pearls error:", error);
+    } finally {
+      setIsGeneratingPearls(false);
+    }
   };
 
   const currentSummary = patient.dailyChecks[0];
@@ -273,24 +288,49 @@ export default function PatientDetails({ patient, onUpdate, onDelete }: PatientD
                 <div className="absolute -bottom-4 -right-4 p-4 opacity-10">
                   <AlertCircle className="w-32 h-32" />
                 </div>
-                <h4 className="text-sage-100 text-[10px] font-bold uppercase tracking-wider mb-4 border-b border-natural-500 pb-2">Clinical Pearls / Warnings</h4>
+                <div className="flex items-center justify-between mb-4 border-b border-natural-500 pb-2">
+                  <h4 className="text-sage-100 text-[10px] font-bold uppercase tracking-wider">Clinical Pearls / Warnings</h4>
+                  <button 
+                    onClick={handleRefreshPearls}
+                    disabled={isGeneratingPearls}
+                    className="p-1 hover:bg-natural-500 rounded transition-colors text-sage-100 disabled:opacity-50"
+                    title="重新生成 AI 建議"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${isGeneratingPearls ? 'animate-spin' : ''}`} />
+                  </button>
+                </div>
                 <ul className="space-y-4 text-xs font-medium">
-                  <li className="flex gap-3">
-                    <div className="w-1.5 h-1.5 rounded-full bg-terracotta-500 mt-1.5 shrink-0" />
-                    Monitor for neck hematoma / Bleeding
-                  </li>
-                  <li className="flex gap-3">
-                    <div className="w-1.5 h-1.5 rounded-full bg-sage-500 mt-1.5 shrink-0" />
-                    Assess for airway stridor
-                  </li>
-                  <li className="flex gap-3">
-                    <div className="w-1.5 h-1.5 rounded-full bg-clinical-500 mt-1.5 shrink-0" />
-                    Evaluate CN XII - tongue deviation
-                  </li>
-                  <li className="flex gap-3">
-                    <div className="w-1.5 h-1.5 rounded-full bg-clay-500 mt-1.5 shrink-0" />
-                    Voice quality assessment (Recurrent LN)
-                  </li>
+                  {patient.clinicalPearls && patient.clinicalPearls.length > 0 ? (
+                    patient.clinicalPearls.map((pearl, idx) => (
+                      <li key={idx} className="flex gap-3">
+                        <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${
+                          idx % 4 === 0 ? 'bg-terracotta-500' :
+                          idx % 4 === 1 ? 'bg-sage-500' :
+                          idx % 4 === 2 ? 'bg-clinical-500' : 'bg-clay-500'
+                        }`} />
+                        {pearl}
+                      </li>
+                    ))
+                  ) : (
+                    <>
+                      <li className="flex gap-3">
+                        <div className="w-1.5 h-1.5 rounded-full bg-terracotta-500 mt-1.5 shrink-0" />
+                        Monitor for neck hematoma / Bleeding
+                      </li>
+                      <li className="flex gap-3">
+                        <div className="w-1.5 h-1.5 rounded-full bg-sage-500 mt-1.5 shrink-0" />
+                        Assess for airway stridor
+                      </li>
+                      <li className="flex gap-3 flex-col">
+                        <button 
+                          onClick={handleRefreshPearls}
+                          className="mt-2 text-[10px] bg-natural-500/50 hover:bg-natural-500 py-1 px-2 rounded text-center transition-all border border-natural-400"
+                        >
+                          {isGeneratingPearls ? 'Generating...' : 'Click to generate AI insights'}
+                        </button>
+                      </li>
+                    </>
+                  )}
                 </ul>
               </div>
             </div>
