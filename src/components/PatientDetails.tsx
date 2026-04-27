@@ -40,6 +40,7 @@ export default function PatientDetails({ patient, onUpdate, onDelete }: PatientD
   const [currentCheckIndex, setCurrentCheckIndex] = useState(patient.dailyChecks.length - 1);
   const [direction, setDirection] = useState(0); // 1 for next, -1 for prev
   const [isGeneratingPearls, setIsGeneratingPearls] = useState(false);
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
 
   // Update direction for slide animation
   const lastIndex = useRef(currentCheckIndex);
@@ -52,14 +53,59 @@ export default function PatientDetails({ patient, onUpdate, onDelete }: PatientD
     lastIndex.current = currentCheckIndex;
   }, [currentCheckIndex]);
 
+  const timelineRef = useRef<HTMLDivElement>(null);
+  const isInternalScroll = useRef(false);
+
+  useEffect(() => {
+    // Auto-centering the picker when index changes (via arrows or picker itself)
+    if (timelineRef.current && !isInternalScroll.current) {
+      const activeElement = timelineRef.current.querySelector(`[data-index="${currentCheckIndex}"]`);
+      if (activeElement) {
+        activeElement.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+      }
+    }
+  }, [currentCheckIndex]);
+
+  const handlePickerScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    if (isInternalScroll.current) return;
+    const container = e.currentTarget;
+    const containerRect = container.getBoundingClientRect();
+    const center = containerRect.left + containerRect.width / 2;
+    
+    // Find the item closest to center
+    const items = container.querySelectorAll('[data-index]');
+    let closestIdx = currentCheckIndex;
+    let minDistance = 50; 
+    
+    items.forEach((item) => {
+      const rect = item.getBoundingClientRect();
+      const itemCenter = rect.left + rect.width / 2;
+      const distance = Math.abs(itemCenter - center);
+      
+      if (distance < minDistance) {
+        minDistance = distance;
+        const newIdx = parseInt((item as HTMLElement).dataset.index || '0');
+        if (newIdx !== currentCheckIndex) {
+          closestIdx = newIdx;
+        }
+      }
+    });
+
+    if (closestIdx !== currentCheckIndex) {
+      setCurrentCheckIndex(closestIdx);
+    }
+  };
+
   const handleNext = () => {
     if (currentCheckIndex < patient.dailyChecks.length - 1) {
+      isInternalScroll.current = false; // Allow effect to run
       setCurrentCheckIndex(prev => prev + 1);
     }
   };
 
   const handlePrev = () => {
     if (currentCheckIndex > 0) {
+      isInternalScroll.current = false; // Allow effect to run
       setCurrentCheckIndex(prev => prev - 1);
     }
   };
@@ -474,37 +520,75 @@ export default function PatientDetails({ patient, onUpdate, onDelete }: PatientD
                             if (!check) return null;
                             return (
                               <>
-                                {/* Simplified Date Navigator */}
-                                <div className="bg-natural-50/50 border-b border-natural-100 py-6 px-4 relative flex items-center justify-center gap-12 group/nav">
+                                {/* Number Picker Date Selector */}
+                                <div className="bg-natural-50/50 border-b border-natural-100 py-4 px-4 relative flex items-center justify-center group/nav overflow-hidden">
+                                  {/* Centered Selection Notch */}
+                                  <div className="absolute top-0 left-1/2 -translate-x-1/2 w-10 h-1 bg-sage-500 rounded-b-full z-30 opacity-50" />
+                                  <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-10 h-1 bg-sage-500 rounded-t-full z-30 opacity-50" />
+                                  <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-[120px] pointer-events-none z-20">
+                                    <div className="h-full border-x border-sage-500/10 bg-sage-500/5 backdrop-blur-[1px]" />
+                                  </div>
+
                                   <button 
                                     onClick={handlePrev}
                                     disabled={currentCheckIndex <= 0 || editingCheckId !== null}
-                                    className="p-3 rounded-full bg-white border border-natural-200 shadow-sm hover:border-sage-300 hover:text-sage-600 disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer group/btn"
+                                    className="absolute left-4 z-30 p-2 rounded-full bg-white/80 backdrop-blur-sm border border-natural-200 shadow-sm hover:border-sage-300 hover:text-sage-600 disabled:opacity-0 transition-all cursor-pointer"
                                     title="Older record"
                                   >
-                                    <ChevronLeft className="w-5 h-5 group-hover/btn:-translate-x-0.5 transition-transform" />
+                                    <ChevronLeft className="w-5 h-5" />
                                   </button>
 
-                                  <div className="flex flex-col items-center">
-                                    <div className="flex items-center gap-3 bg-white px-8 py-3 rounded-2xl border border-sage-100 shadow-sm relative">
-                                      <Calendar className="w-4 h-4 text-sage-500" />
-                                      <span className="text-sm font-bold text-natural-800 tracking-tight">
-                                        {format(new Date(patient.dailyChecks[currentCheckIndex].date), 'yyyy-MM-dd')}
-                                      </span>
-                                      <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-4 h-1 bg-sage-500 rounded-full" />
-                                    </div>
-                                    <div className="text-[10px] uppercase tracking-widest text-natural-400 mt-2 font-black">
-                                      Record {currentCheckIndex + 1} of {patient.dailyChecks.length}
-                                    </div>
+                                  <div 
+                                    ref={timelineRef}
+                                    onScroll={handlePickerScroll}
+                                    className="flex items-center overflow-x-auto no-scrollbar snap-x snap-mandatory gap-4 px-[calc(50%-60px)] py-2 relative scroll-smooth cursor-grab active:cursor-grabbing"
+                                    style={{ maskImage: 'linear-gradient(to right, transparent, black 20%, black 80%, transparent)' }}
+                                  >
+                                    {patient.dailyChecks.map((c, idx) => {
+                                      const isActive = currentCheckIndex === idx;
+                                      return (
+                                        <button
+                                          key={c.id}
+                                          data-index={idx}
+                                          onClick={() => {
+                                            isInternalScroll.current = false;
+                                            setCurrentCheckIndex(idx);
+                                          }}
+                                          className={`snap-center shrink-0 w-[120px] py-2 flex flex-col items-center rounded-xl transition-all duration-300 ${
+                                            isActive 
+                                              ? 'bg-sage-600 text-white shadow-lg scale-110 z-10' 
+                                              : 'text-natural-400 opacity-50 scale-90'
+                                          }`}
+                                        >
+                                          <span className={`text-[10px] font-bold uppercase tracking-widest ${isActive ? 'text-sage-100' : 'text-natural-300'}`}>
+                                            {format(new Date(c.date), 'EEE')}
+                                          </span>
+                                          <div className="flex items-baseline gap-1">
+                                            <span className="text-xl font-serif font-bold">
+                                              {format(new Date(c.date), 'dd')}
+                                            </span>
+                                            <span className="text-xs font-bold opacity-60">
+                                              {format(new Date(c.date), 'MMM')}
+                                            </span>
+                                          </div>
+                                          <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md mt-1 ${isActive ? 'bg-white/10' : ''}`}>
+                                            <Clock className="w-2.5 h-2.5" />
+                                            <span className="text-[10px] font-bold">
+                                              {format(new Date(c.date), 'HH:mm')}
+                                            </span>
+                                          </div>
+                                        </button>
+                                      );
+                                    })}
                                   </div>
 
                                   <button 
                                     onClick={handleNext}
                                     disabled={currentCheckIndex >= patient.dailyChecks.length - 1 || editingCheckId !== null}
-                                    className="p-3 rounded-full bg-white border border-natural-200 shadow-sm hover:border-sage-300 hover:text-sage-600 disabled:opacity-30 disabled:cursor-not-allowed transition-all cursor-pointer group/btn"
+                                    className="absolute right-4 z-30 p-2 rounded-full bg-white/80 backdrop-blur-sm border border-natural-200 shadow-sm hover:border-sage-300 hover:text-sage-600 disabled:opacity-0 transition-all cursor-pointer"
                                     title="Newer record"
                                   >
-                                    <ChevronRight className="w-5 h-5 group-hover/btn:translate-x-0.5 transition-transform" />
+                                    <ChevronRight className="w-5 h-5" />
                                   </button>
                                 </div>
 
