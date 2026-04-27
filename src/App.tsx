@@ -118,7 +118,11 @@ export default function App() {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const patientData: Patient[] = [];
       snapshot.forEach((doc) => {
-        patientData.push({ ...doc.data(), id: doc.id } as Patient);
+        const data = doc.data();
+        if (data.dailyChecks) {
+          data.dailyChecks.sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        }
+        patientData.push({ ...data, id: doc.id } as Patient);
       });
       setPatients(patientData);
     }, (error) => {
@@ -422,7 +426,7 @@ export default function App() {
                        </div>
                        <div className="flex items-center gap-2 text-natural-400 text-[10px] uppercase font-bold tracking-tight">
                          <ClipboardList className="w-3.5 h-3.5" />
-                         <span>Last Round: {patient.dailyChecks.length > 0 ? patient.dailyChecks[0].date.split('T')[0] : 'None'}</span>
+                         <span>Last Round: {patient.dailyChecks.length > 0 ? patient.dailyChecks[patient.dailyChecks.length - 1].date.split('T')[0] : 'None'}</span>
                        </div>
                     </div>
                   </button>

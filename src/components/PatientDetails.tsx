@@ -37,7 +37,7 @@ export default function PatientDetails({ patient, onUpdate, onDelete }: PatientD
   const [activeTab, setActiveTab] = useState<'profile' | 'checklist'>('profile');
   const [showChecklistForm, setShowChecklistForm] = useState(false);
   const [editingCheckId, setEditingCheckId] = useState<string | null>(null);
-  const [currentCheckIndex, setCurrentCheckIndex] = useState(patient.dailyChecks.length - 1);
+  const [currentCheckIndex, setCurrentCheckIndex] = useState(patient.dailyChecks.length > 0 ? patient.dailyChecks.length - 1 : 0);
   const [direction, setDirection] = useState(0); // 1 for next, -1 for prev
   const [isGeneratingPearls, setIsGeneratingPearls] = useState(false);
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
@@ -56,57 +56,58 @@ export default function PatientDetails({ patient, onUpdate, onDelete }: PatientD
   const timelineRef = useRef<HTMLDivElement>(null);
   const isInternalScroll = useRef(false);
 
-  useEffect(() => {
-    // Auto-centering the picker when index changes (via arrows or picker itself)
-    if (timelineRef.current && !isInternalScroll.current) {
-      const activeElement = timelineRef.current.querySelector(`[data-index="${currentCheckIndex}"]`);
-      if (activeElement) {
-        activeElement.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
-      }
-    }
-  }, [currentCheckIndex]);
-
-  const handlePickerScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    if (isInternalScroll.current) return;
-    const container = e.currentTarget;
-    const containerRect = container.getBoundingClientRect();
-    const center = containerRect.left + containerRect.width / 2;
+  const updateSelectedDate = (index: number) => {
+    isInternalScroll.current = true;
+    setCurrentCheckIndex(index);
     
-    // Find the item closest to center
-    const items = container.querySelectorAll('[data-index]');
-    let closestIdx = currentCheckIndex;
-    let minDistance = 50; 
-    
-    items.forEach((item) => {
-      const rect = item.getBoundingClientRect();
-      const itemCenter = rect.left + rect.width / 2;
-      const distance = Math.abs(itemCenter - center);
-      
-      if (distance < minDistance) {
-        minDistance = distance;
-        const newIdx = parseInt((item as HTMLElement).dataset.index || '0');
-        if (newIdx !== currentCheckIndex) {
-          closestIdx = newIdx;
+    // Use requestAnimationFrame to ensure the DOM has updated before calculating scroll
+    requestAnimationFrame(() => {
+      if (timelineRef.current) {
+        const activeElement = timelineRef.current.querySelector(`[data-index="${index}"]`);
+        if (activeElement) {
+          activeElement.scrollIntoView({ behavior: 'auto', inline: 'center', block: 'nearest' });
         }
       }
     });
-
-    if (closestIdx !== currentCheckIndex) {
-      setCurrentCheckIndex(closestIdx);
-    }
+    
+    console.log("Date selected:", patient.dailyChecks[index].date);
+    
+    setTimeout(() => {
+      isInternalScroll.current = false;
+    }, 100);
   };
+
+  const handleGoToLatest = () => {
+    updateSelectedDate(patient.dailyChecks.length - 1);
+  };
+
+  useEffect(() => {
+    // Center whenever switching to checklist tab or when checks change
+    if (activeTab === 'checklist') {
+      const latestIndex = patient.dailyChecks.length > 0 ? patient.dailyChecks.length - 1 : 0;
+      setCurrentCheckIndex(latestIndex);
+      
+      const timer = setTimeout(() => {
+        if (timelineRef.current) {
+          const activeElement = timelineRef.current.querySelector(`[data-index="${latestIndex}"]`);
+          if (activeElement) {
+            activeElement.scrollIntoView({ behavior: 'auto', inline: 'center', block: 'nearest' });
+          }
+        }
+      }, 150); // Slightly longer delay to ensure DOM is ready
+      return () => clearTimeout(timer);
+    }
+  }, [activeTab]); // Trigger when tab changes
 
   const handleNext = () => {
     if (currentCheckIndex < patient.dailyChecks.length - 1) {
-      isInternalScroll.current = false; // Allow effect to run
-      setCurrentCheckIndex(prev => prev + 1);
+      updateSelectedDate(currentCheckIndex + 1);
     }
   };
 
   const handlePrev = () => {
     if (currentCheckIndex > 0) {
-      isInternalScroll.current = false; // Allow effect to run
-      setCurrentCheckIndex(prev => prev - 1);
+      updateSelectedDate(currentCheckIndex - 1);
     }
   };
 
@@ -146,12 +147,13 @@ export default function PatientDetails({ patient, onUpdate, onDelete }: PatientD
   };
 
   const handleAddCheck = (newCheck: ENTChecklist) => {
+    const newChecks = [...patient.dailyChecks, newCheck];
     onUpdate({
       ...patient,
-      dailyChecks: [newCheck, ...patient.dailyChecks]
+      dailyChecks: newChecks
     });
     setShowChecklistForm(false);
-    setCurrentCheckIndex(0);
+    setCurrentCheckIndex(newChecks.length - 1);
   };
 
   const handleUpdateCheck = (updatedCheck: ENTChecklist) => {
@@ -230,7 +232,7 @@ export default function PatientDetails({ patient, onUpdate, onDelete }: PatientD
     }
   };
 
-  const currentSummary = patient.dailyChecks[0];
+  const currentSummary = patient.dailyChecks.length > 0 ? patient.dailyChecks[patient.dailyChecks.length - 1] : null;
 
   return (
     <div className="space-y-6 text-natural-600">
@@ -521,74 +523,134 @@ export default function PatientDetails({ patient, onUpdate, onDelete }: PatientD
                             return (
                               <>
                                 {/* Number Picker Date Selector */}
-                                <div className="bg-natural-50/50 border-b border-natural-100 py-4 px-4 relative flex items-center justify-center group/nav overflow-hidden">
-                                  {/* Centered Selection Notch */}
-                                  <div className="absolute top-0 left-1/2 -translate-x-1/2 w-10 h-1 bg-sage-500 rounded-b-full z-30 opacity-50" />
-                                  <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-10 h-1 bg-sage-500 rounded-t-full z-30 opacity-50" />
-                                  <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-[120px] pointer-events-none z-20">
-                                    <div className="h-full border-x border-sage-500/10 bg-sage-500/5 backdrop-blur-[1px]" />
+                                <div className="bg-natural-50/50 border-b border-natural-100 py-4 px-4 flex items-center group/nav overflow-hidden">
+                                  {/* Left Side Buttons */}
+                                  <div className="flex items-center gap-1.5 z-30 mr-2 shrink-0">
+                                    <button 
+                                      onClick={handleGoToLatest}
+                                      className="p-2 rounded-lg bg-white border border-natural-200 shadow-xs hover:border-sage-400 hover:text-sage-600 transition-all text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 whitespace-nowrap"
+                                      title="Reset to Today"
+                                    >
+                                      Today
+                                    </button>
+                                    <button 
+                                      onClick={handlePrev}
+                                      disabled={currentCheckIndex <= 0 || editingCheckId !== null}
+                                      className="p-2 rounded-full bg-white border border-natural-200 shadow-xs hover:border-sage-400 hover:text-sage-600 disabled:opacity-30 disabled:pointer-events-none transition-all cursor-pointer"
+                                      title="Older record"
+                                    >
+                                      <ChevronLeft className="w-4 h-4" />
+                                    </button>
                                   </div>
 
-                                  <button 
-                                    onClick={handlePrev}
-                                    disabled={currentCheckIndex <= 0 || editingCheckId !== null}
-                                    className="absolute left-4 z-30 p-2 rounded-full bg-white/80 backdrop-blur-sm border border-natural-200 shadow-sm hover:border-sage-300 hover:text-sage-600 disabled:opacity-0 transition-all cursor-pointer"
-                                    title="Older record"
-                                  >
-                                    <ChevronLeft className="w-5 h-5" />
-                                  </button>
+                                  {/* Picker Area with Scoped Indicators */}
+                                  <div className="flex-1 relative flex items-center overflow-hidden">
+                                    {/* Centered Selection Notch */}
+                                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[80px] h-1 bg-sage-500 rounded-b-full z-30 opacity-50 pointer-events-none" />
+                                    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[80px] h-1 bg-sage-500 rounded-t-full z-30 opacity-50 pointer-events-none" />
+                                    <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-[80px] pointer-events-none z-20">
+                                      <div className="h-full border-x border-sage-500/20 bg-sage-500/5" />
+                                    </div>
 
-                                  <div 
-                                    ref={timelineRef}
-                                    onScroll={handlePickerScroll}
-                                    className="flex items-center overflow-x-auto no-scrollbar snap-x snap-mandatory gap-4 px-[calc(50%-60px)] py-2 relative scroll-smooth cursor-grab active:cursor-grabbing"
-                                    style={{ maskImage: 'linear-gradient(to right, transparent, black 20%, black 80%, transparent)' }}
-                                  >
-                                    {patient.dailyChecks.map((c, idx) => {
-                                      const isActive = currentCheckIndex === idx;
-                                      return (
-                                        <button
-                                          key={c.id}
-                                          data-index={idx}
-                                          onClick={() => {
-                                            isInternalScroll.current = false;
-                                            setCurrentCheckIndex(idx);
-                                          }}
-                                          className={`snap-center shrink-0 w-[120px] py-2 flex flex-col items-center rounded-xl transition-all duration-300 ${
-                                            isActive 
-                                              ? 'bg-sage-600 text-white shadow-lg scale-110 z-10' 
-                                              : 'text-natural-400 opacity-50 scale-90'
-                                          }`}
-                                        >
-                                          <span className={`text-[10px] font-bold uppercase tracking-widest ${isActive ? 'text-sage-100' : 'text-natural-300'}`}>
-                                            {format(new Date(c.date), 'EEE')}
-                                          </span>
-                                          <div className="flex items-baseline gap-1">
-                                            <span className="text-xl font-serif font-bold">
-                                              {format(new Date(c.date), 'dd')}
+                                    <div 
+                                      ref={timelineRef}
+                                      className="w-full flex items-center overflow-hidden no-scrollbar snap-x snap-mandatory gap-3 px-[calc(50%-40px)] py-4 relative"
+                                    >
+                                      {patient.dailyChecks.map((c, idx) => {
+                                        const isActive = currentCheckIndex === idx;
+                                        return (
+                                          <button
+                                            key={c.id}
+                                            data-index={idx}
+                                            onClick={() => {
+                                              if (isActive) {
+                                                setIsDatePickerOpen(!isDatePickerOpen);
+                                              } else {
+                                                updateSelectedDate(idx);
+                                                setIsDatePickerOpen(false);
+                                              }
+                                            }}
+                                            className={`snap-center shrink-0 w-[80px] h-[52px] flex flex-col items-center justify-center rounded-xl transition-all duration-300 relative ${
+                                              isActive 
+                                                ? 'bg-sage-600 text-white shadow-lg scale-110 z-10' 
+                                                : 'text-natural-400 opacity-40 scale-90 hover:opacity-70 hover:scale-95'
+                                            }`}
+                                            style={{ scrollSnapAlign: 'center' }}
+                                          >
+                                            <span className={`text-[8px] font-bold uppercase tracking-widest leading-tight ${isActive ? 'text-sage-100' : 'text-natural-300'}`}>
+                                              {format(new Date(c.date), 'EEE')}
                                             </span>
-                                            <span className="text-xs font-bold opacity-60">
-                                              {format(new Date(c.date), 'MMM')}
-                                            </span>
-                                          </div>
-                                          <div className={`flex items-center gap-1.5 px-2 py-0.5 rounded-md mt-1 ${isActive ? 'bg-white/10' : ''}`}>
-                                            <Clock className="w-2.5 h-2.5" />
-                                            <span className="text-[10px] font-bold">
-                                              {format(new Date(c.date), 'HH:mm')}
-                                            </span>
-                                          </div>
-                                        </button>
-                                      );
-                                    })}
+                                            <div className="flex items-baseline gap-0.5 leading-tight">
+                                              <span className="text-lg font-serif font-bold">
+                                                {format(new Date(c.date), 'dd')}
+                                              </span>
+                                              <span className="text-[9px] font-bold opacity-60">
+                                                {format(new Date(c.date), 'MMM')}
+                                              </span>
+                                            </div>
+                                            <div className="flex items-center gap-0.5">
+                                              <span className="text-[8px] font-medium opacity-80 leading-tight">
+                                                {format(new Date(c.date), 'HH:mm')}
+                                              </span>
+                                              {isActive && <ChevronDown className="w-2 h-2 opacity-60" />}
+                                            </div>
+
+                                            {/* Dropdown Menu */}
+                                            <AnimatePresence>
+                                              {isActive && isDatePickerOpen && (
+                                                <motion.div
+                                                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                                                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                                                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                                                  className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-48 bg-white rounded-xl shadow-2xl border border-natural-200 z-[100] py-2 max-h-64 overflow-y-auto no-scrollbar"
+                                                >
+                                                  <div className="px-3 py-1 mb-1 border-b border-natural-100">
+                                                    <p className="text-[9px] font-bold text-natural-400 uppercase tracking-widest text-left">Select Date</p>
+                                                  </div>
+                                                  {[...patient.dailyChecks].reverse().map((dropCheck) => {
+                                                    const originalIndex = patient.dailyChecks.findIndex(dc => dc.id === dropCheck.id);
+                                                    return (
+                                                      <div 
+                                                        key={dropCheck.id}
+                                                        onClick={(e) => {
+                                                          e.stopPropagation();
+                                                          updateSelectedDate(originalIndex);
+                                                          setIsDatePickerOpen(false);
+                                                        }}
+                                                        className={`px-3 py-2 text-left hover:bg-sage-50 transition-colors cursor-pointer flex justify-between items-center ${
+                                                          originalIndex === currentCheckIndex ? 'bg-sage-50 text-sage-600' : 'text-natural-600'
+                                                        }`}
+                                                      >
+                                                        <div className="flex flex-col">
+                                                          <span className="text-xs font-bold leading-none">
+                                                            {format(new Date(dropCheck.date), 'MMM dd, yyyy')}
+                                                          </span>
+                                                          <span className="text-[10px] opacity-60">
+                                                            {format(new Date(dropCheck.date), 'HH:mm (EEE)')}
+                                                          </span>
+                                                        </div>
+                                                        {originalIndex === currentCheckIndex && (
+                                                          <Clock className="w-3 h-3 text-sage-500" />
+                                                        )}
+                                                      </div>
+                                                    );
+                                                  })}
+                                                </motion.div>
+                                              )}
+                                            </AnimatePresence>
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
                                   </div>
 
                                   <button 
                                     onClick={handleNext}
                                     disabled={currentCheckIndex >= patient.dailyChecks.length - 1 || editingCheckId !== null}
-                                    className="absolute right-4 z-30 p-2 rounded-full bg-white/80 backdrop-blur-sm border border-natural-200 shadow-sm hover:border-sage-300 hover:text-sage-600 disabled:opacity-0 transition-all cursor-pointer"
+                                    className="ml-2 z-30 p-2 rounded-full bg-white border border-natural-200 shadow-xs hover:border-sage-400 hover:text-sage-600 disabled:opacity-30 disabled:pointer-events-none transition-all cursor-pointer shrink-0"
                                     title="Newer record"
                                   >
-                                    <ChevronRight className="w-5 h-5" />
+                                    <ChevronRight className="w-4 h-4" />
                                   </button>
                                 </div>
 
