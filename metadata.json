@@ -1,0 +1,6 @@
+{
+  "name": "ENT 臨床住院管理系統",
+  "description": "專為耳鼻喉科設計的住院病人巡房紀錄系統，包含基本資料、診斷、治療計畫與每日臨床檢查清單。",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
