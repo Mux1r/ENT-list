@@ -1,0 +1,82 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Phase 3: Primitives
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Phase 4: Entity Validators
+    function isValidPatient(data) {
+      return data.keys().hasAll(['id', 'name', 'bedNumber', 'ownerId', 'createdAt', 'updatedAt'])
+        && data.id is string && data.id.size() <= 128
+        && data.name is string && data.name.size() <= 100
+        && data.bedNumber is string && data.bedNumber.size() <= 20
+        && data.ownerId == request.auth.uid
+        && data.createdAt == request.time
+        && data.updatedAt == request.time
+        && (data.get('age', 0) is number)
+        && (data.get('gender', 'Male') in ['Male', 'Female', 'Other'])
+        && (data.get('status', 'Stable') in ['Stable', 'Critical', 'Discharge Pending']);
+    }
+
+    function isValidChecklist(data, patientId) {
+       return data.keys().hasAll(['id', 'date', 'ownerId', 'patientId'])
+        && data.ownerId == request.auth.uid
+        && data.patientId == patientId
+        && data.id is string
+        && (data.get('notes', '').size() <= 1000);
+    }
+
+    // Rules for Patients
+    match /patients/{patientId} {
+      allow get: if isSignedIn() && existing().ownerId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+      
+      allow create: if isSignedIn() && isValidId(patientId) && isValidPatient(incoming());
+      
+      allow update: if isSignedIn() && existing().ownerId == request.auth.uid 
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        // Action: Field Update
+        && (incoming().diff(existing()).affectedKeys().hasOnly(['name', 'bedNumber', 'age', 'gender', 'chartNumber', 'admissionDate', 'admissionDiagnosis', 'preliminaryDiagnosis', 'treatmentPlan', 'status', 'updatedAt']));
+
+      allow delete: if isSignedIn() && existing().ownerId == request.auth.uid;
+
+      // Subcollection Checklists
+      match /checklists/{checklistId} {
+        allow list: if isSignedIn() && resource.data.ownerId == request.auth.uid;
+        allow get: if isSignedIn() && existing().ownerId == request.auth.uid;
+        
+        // Master Gate: Verify parent patient ownership
+        allow create: if isSignedIn() && isValidId(checklistId) 
+          && get(/databases/$(database)/documents/patients/$(patientId)).data.ownerId == request.auth.uid
+          && isValidChecklist(incoming(), patientId);
+
+        allow update: if isSignedIn() && existing().ownerId == request.auth.uid
+          && incoming().ownerId == existing().ownerId
+          && (incoming().diff(existing()).affectedKeys().hasOnly(['bleeding', 'airway', 'swallowing', 'facialNerve', 'hoarseness', 'drainAmount', 'woundStatus', 'painLevel', 'fever', 'notes']));
+
+        allow delete: if isSignedIn() && existing().ownerId == request.auth.uid;
+      }
+    }
+  }
+}

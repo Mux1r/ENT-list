@@ -1,0 +1,57 @@
+{
+  "entities": {
+    "Patient": {
+      "title": "Patient",
+      "description": "Patient information and clinical history",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "bedNumber": { "type": "string" },
+        "age": { "type": "number" },
+        "gender": { "type": "string", "enum": ["Male", "Female", "Other"] },
+        "chartNumber": { "type": "string" },
+        "admissionDate": { "type": "string" },
+        "admissionDiagnosis": { "type": "string" },
+        "preliminaryDiagnosis": { "type": "string" },
+        "treatmentPlan": { "type": "string" },
+        "status": { "type": "string", "enum": ["Stable", "Critical", "Discharge Pending"] },
+        "ownerId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "bedNumber", "ownerId"]
+    },
+    "ENTChecklist": {
+      "title": "ENT Checklist",
+      "description": "Daily clinical checking records for clinical monitoring",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "date": { "type": "string" },
+        "bleeding": { "type": "string", "enum": ["None", "Minor", "Significant"] },
+        "airway": { "type": "string", "enum": ["Clear", "Stridor", "Obstructed"] },
+        "swallowing": { "type": "string", "enum": ["Normal", "Dysphagia", "NPO"] },
+        "facialNerve": { "type": "string", "enum": ["Intact", "Paresis", "Paralysis"] },
+        "hoarseness": { "type": "boolean" },
+        "drainAmount": { "type": "number" },
+        "woundStatus": { "type": "string", "enum": ["Clean", "Hyperemia", "Discharge"] },
+        "painLevel": { "type": "number" },
+        "fever": { "type": "number" },
+        "notes": { "type": "string" },
+        "ownerId": { "type": "string" },
+        "patientId": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "patients": {
+      "schema": "Patient",
+      "description": "Root collection for clinical patients"
+    },
+    "patients/{patientId}/checklists": {
+      "schema": "ENTChecklist",
+      "description": "Subcollection for daily clinical checklists per patient"
+    }
+  }
+}

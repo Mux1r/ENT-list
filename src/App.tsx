@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Users, 
   Search, 
@@ -11,13 +11,30 @@ import {
   ChevronRight,
   Filter,
   Stethoscope,
-  FileUp
+  FileUp,
+  LogIn,
+  Loader2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Patient, ENTChecklist } from './types';
 import PatientDetails from './components/PatientDetails';
 import PatientForm from './components/PatientForm';
 import ImportModal from './components/ImportModal';
+import { db, auth, loginWithGoogle, logout } from './lib/firebase';
+import { 
+  collection, 
+  addDoc, 
+  updateDoc, 
+  deleteDoc, 
+  doc, 
+  onSnapshot, 
+  query, 
+  where, 
+  serverTimestamp,
+  orderBy,
+  setDoc
+} from 'firebase/firestore';
+import { onAuthStateChanged, User } from 'firebase/auth';
 import { format } from 'date-fns';
 
 // Mock Initial Data
@@ -68,11 +85,46 @@ const MOCK_PATIENTS: Patient[] = [
 ];
 
 export default function App() {
-  const [patients, setPatients] = useState<Patient[]>(MOCK_PATIENTS);
+  const [patients, setPatients] = useState<Patient[]>([]);
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setUser(user);
+      setAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!user) {
+      setPatients([]);
+      return;
+    }
+
+    const q = query(
+      collection(db, 'patients'),
+      where('ownerId', '==', user.uid),
+      orderBy('updatedAt', 'desc')
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const patientData: Patient[] = [];
+      snapshot.forEach((doc) => {
+        patientData.push({ ...doc.data(), id: doc.id } as Patient);
+      });
+      setPatients(patientData);
+    }, (error) => {
+      console.error("Firestore Error:", error);
+    });
+
+    return () => unsubscribe();
+  }, [user]);
 
   const selectedPatient = patients.find(p => p.id === selectedPatientId);
 
@@ -82,27 +134,104 @@ export default function App() {
     p.chartNumber.includes(searchTerm)
   );
 
-  const handleUpdatePatient = (updatedPatient: Patient) => {
-    setPatients(prev => prev.map(p => p.id === updatedPatient.id ? updatedPatient : p));
-  };
-
-  const handleDeletePatient = (id: string) => {
-    if (confirm('確定要刪除這位病患嗎？這是不可逆的。')) {
-      setPatients(prev => prev.filter(p => p.id !== id));
-      setSelectedPatientId(null);
+  const handleUpdatePatient = async (updatedPatient: Patient) => {
+    if (!user) return;
+    try {
+      const patientRef = doc(db, 'patients', updatedPatient.id);
+      await updateDoc(patientRef, {
+        ...updatedPatient,
+        updatedAt: serverTimestamp()
+      } as any);
+    } catch (error) {
+      console.error("Error updating patient:", error);
     }
   };
 
-  const handleAddPatient = (newPatient: Patient) => {
-    setPatients(prev => [newPatient, ...prev]);
-    setShowAddForm(false);
+  const handleDeletePatient = async (id: string) => {
+    if (!user) return;
+    if (confirm('確定要刪除這位病患嗎？這是不能復原的。')) {
+      try {
+        await deleteDoc(doc(db, 'patients', id));
+        setSelectedPatientId(null);
+      } catch (error) {
+        console.error("Error deleting patient:", error);
+      }
+    }
   };
 
-  const handleBatchImport = (importedPatients: Patient[]) => {
-    setPatients(prev => [...importedPatients, ...prev]);
-    setShowImportModal(false);
-    alert(`成功匯入 ${importedPatients.length} 位病患資料`);
+  const handleAddPatient = async (newPatientData: Omit<Patient, 'id'>) => {
+    if (!user) return;
+    try {
+      const patientsRef = collection(db, 'patients');
+      const newDocRef = doc(patientsRef);
+      const newPatientWithId = {
+        ...newPatientData,
+        id: newDocRef.id,
+        ownerId: user.uid,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      };
+      await setDoc(newDocRef, newPatientWithId);
+      setShowAddForm(false);
+    } catch (error) {
+      console.error("Error adding patient:", error);
+    }
   };
+
+  const handleBatchImport = async (importedPatients: Patient[]) => {
+    if (!user) return;
+    try {
+      for (const patient of importedPatients) {
+        const patientsRef = collection(db, 'patients');
+        const newDocRef = doc(patientsRef);
+        await setDoc(newDocRef, {
+          ...patient,
+          id: newDocRef.id,
+          ownerId: user.uid,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+      }
+      setShowImportModal(false);
+      alert(`成功匯入 ${importedPatients.length} 位病患資料`);
+    } catch (error) {
+      console.error("Error batch importing:", error);
+    }
+  };
+
+  if (authLoading) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-natural-50">
+        <Loader2 className="w-8 h-8 text-sage-500 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="h-screen flex flex-col items-center justify-center bg-natural-50 p-6">
+        <div className="max-w-md w-full bg-white p-12 rounded-3xl shadow-xl border border-natural-200 text-center">
+          <div className="w-20 h-20 bg-sage-500 rounded-2xl shadow-lg flex items-center justify-center mx-auto mb-8">
+            <Ear className="w-12 h-12 text-white" />
+          </div>
+          <h1 className="text-4xl font-serif font-bold text-natural-900 mb-4 tracking-tight">ENT 住院端</h1>
+          <p className="text-natural-500 mb-10 leading-relaxed font-serif italic text-lg">
+            "Precision in every round, clarity in every chart."
+          </p>
+          <button 
+            onClick={loginWithGoogle}
+            className="w-full flex items-center justify-center gap-4 bg-white border-2 border-natural-200 text-natural-700 py-4 rounded-xl font-bold hover:bg-natural-50 transition-all hover:border-sage-500 group"
+          >
+            <LogIn className="w-5 h-5 text-natural-400 group-hover:text-sage-500 transition-colors" />
+            使用 Google 帳號登入
+          </button>
+          <p className="mt-8 text-[10px] uppercase font-bold tracking-widest text-natural-300">
+            Secure Medical Professional Access Only
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-natural-50 overflow-hidden font-sans text-natural-600">
@@ -140,15 +269,22 @@ export default function App() {
 
         <div className="p-4 mt-auto border-t border-natural-200">
           <div className="flex items-center gap-3 p-3 bg-white rounded-xl border border-natural-200">
-            <div className="w-8 h-8 rounded-full bg-sage-100 flex items-center justify-center font-bold text-sage-700 text-xs">
-              ENT
-            </div>
+            {user.photoURL ? (
+              <img src={user.photoURL} alt="Profile" className="w-8 h-8 rounded-full border border-natural-100" />
+            ) : (
+              <div className="w-8 h-8 rounded-full bg-sage-100 flex items-center justify-center font-bold text-sage-700 text-xs text-uppercase">
+                {user.displayName?.charAt(0) || 'D'}
+              </div>
+            )}
             <div className="flex-1 truncate">
-              <p className="text-xs font-bold text-natural-900">Dr. Lin</p>
-              <p className="text-[10px] text-natural-400 uppercase">Attending Physician</p>
+              <p className="text-xs font-bold text-natural-900 truncate">{user.displayName || 'Doctor'}</p>
+              <p className="text-[10px] text-natural-400 uppercase truncate">ENT Specialist</p>
             </div>
           </div>
-          <button className="w-full flex items-center justify-center gap-2 mt-4 text-natural-400 hover:text-terracotta-500 text-xs font-bold transition-colors">
+          <button 
+            onClick={logout}
+            className="w-full flex items-center justify-center gap-2 mt-4 text-natural-400 hover:text-terracotta-500 text-xs font-bold transition-colors"
+          >
             <LogOut className="w-4 h-4" />
             登出系統
           </button>
