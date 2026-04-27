@@ -28,19 +28,47 @@ export default function PatientDetails({ patient, onUpdate, onDelete }: PatientD
   const [activeTab, setActiveTab] = useState<'profile' | 'checklist'>('profile');
   const [showChecklistForm, setShowChecklistForm] = useState(false);
 
+  // Local state to handle smooth typing (IME)
+  const [localFields, setLocalFields] = useState({
+    name: patient.name,
+    bedNumber: patient.bedNumber,
+    chartNumber: patient.chartNumber,
+    age: patient.age.toString(),
+    admissionDate: patient.admissionDate,
+    admissionDiagnosis: patient.admissionDiagnosis,
+    preliminaryDiagnosis: patient.preliminaryDiagnosis,
+    treatmentPlan: patient.treatmentPlan,
+  });
+
+  // Sync local fields when patient prop changes (e.g. selecting different patient)
+  React.useEffect(() => {
+    setLocalFields({
+      name: patient.name,
+      bedNumber: patient.bedNumber,
+      chartNumber: patient.chartNumber,
+      age: patient.age.toString(),
+      admissionDate: patient.admissionDate,
+      admissionDiagnosis: patient.admissionDiagnosis,
+      preliminaryDiagnosis: patient.preliminaryDiagnosis,
+      treatmentPlan: patient.treatmentPlan,
+    });
+  }, [patient.id, patient.name, patient.bedNumber, patient.chartNumber, patient.age, patient.admissionDate, patient.admissionDiagnosis, patient.preliminaryDiagnosis, patient.treatmentPlan]);
+
+  const handleLocalChange = (field: keyof typeof localFields, value: string) => {
+    setLocalFields(prev => ({ ...prev, [field]: value }));
+  };
+
+  const syncField = (field: keyof Patient, value: any) => {
+    if (patient[field] === value) return;
+    onUpdate({ ...patient, [field]: value });
+  };
+
   const handleAddCheck = (newCheck: ENTChecklist) => {
     onUpdate({
       ...patient,
       dailyChecks: [newCheck, ...patient.dailyChecks]
     });
     setShowChecklistForm(false);
-  };
-
-  const handleFieldChange = (field: keyof Patient, value: any) => {
-    onUpdate({
-      ...patient,
-      [field]: value
-    });
   };
 
   const currentSummary = patient.dailyChecks[0];
@@ -61,16 +89,18 @@ export default function PatientDetails({ patient, onUpdate, onDelete }: PatientD
               <div className="flex flex-col gap-1">
                 <span className="text-[10px] items-center font-bold text-natural-300 uppercase tracking-widest pl-1">Bed No.</span>
                 <input 
-                  value={patient.bedNumber}
-                  onChange={(e) => handleFieldChange('bedNumber', e.target.value)}
+                  value={localFields.bedNumber}
+                  onChange={(e) => handleLocalChange('bedNumber', e.target.value)}
+                  onBlur={() => syncField('bedNumber', localFields.bedNumber)}
                   className="w-24 px-2 py-1 rounded bg-sage-50 text-sage-600 border border-sage-100 text-xs font-bold uppercase tracking-wider focus:ring-1 focus:ring-sage-500 focus:outline-hidden"
                 />
               </div>
               <div className="flex flex-col gap-1 flex-1">
                 <span className="text-[10px] font-bold text-natural-300 uppercase tracking-widest pl-1">Patient Name</span>
                 <input 
-                  value={patient.name}
-                  onChange={(e) => handleFieldChange('name', e.target.value)}
+                  value={localFields.name}
+                  onChange={(e) => handleLocalChange('name', e.target.value)}
+                  onBlur={() => syncField('name', localFields.name)}
                   className="text-3xl font-serif font-bold text-natural-900 bg-transparent border-b border-transparent hover:border-natural-200 focus:border-sage-500 focus:outline-hidden w-full"
                 />
               </div>
@@ -84,7 +114,7 @@ export default function PatientDetails({ patient, onUpdate, onDelete }: PatientD
                 </button>
                 <select 
                   value={patient.status}
-                  onChange={(e) => handleFieldChange('status', e.target.value as any)}
+                  onChange={(e) => syncField('status', e.target.value)}
                   className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-widest border focus:outline-hidden transition-all ${
                     patient.status === 'Stable' 
                       ? 'bg-sage-50 text-sage-700 border-sage-100' 
@@ -103,8 +133,9 @@ export default function PatientDetails({ patient, onUpdate, onDelete }: PatientD
               <div className="flex flex-col gap-1">
                 <span className="text-[10px] font-bold text-natural-300 uppercase tracking-widest">Chart No.</span>
                 <input 
-                  value={patient.chartNumber}
-                  onChange={(e) => handleFieldChange('chartNumber', e.target.value)}
+                  value={localFields.chartNumber}
+                  onChange={(e) => handleLocalChange('chartNumber', e.target.value)}
+                  onBlur={() => syncField('chartNumber', localFields.chartNumber)}
                   className="bg-transparent border-b border-transparent hover:border-natural-200 focus:border-sage-500 focus:outline-hidden"
                 />
               </div>
@@ -112,7 +143,7 @@ export default function PatientDetails({ patient, onUpdate, onDelete }: PatientD
                 <span className="text-[10px] font-bold text-natural-300 uppercase tracking-widest">Gender</span>
                 <select 
                   value={patient.gender}
-                  onChange={(e) => handleFieldChange('gender', e.target.value as Gender)}
+                  onChange={(e) => syncField('gender', e.target.value)}
                   className="bg-transparent border-b border-transparent hover:border-natural-200 focus:border-sage-500 focus:outline-hidden"
                 >
                   <option value="Male">Male</option>
@@ -124,8 +155,9 @@ export default function PatientDetails({ patient, onUpdate, onDelete }: PatientD
                 <span className="text-[10px] font-bold text-natural-300 uppercase tracking-widest">Age</span>
                 <input 
                   type="number"
-                  value={patient.age}
-                  onChange={(e) => handleFieldChange('age', parseInt(e.target.value) || 0)}
+                  value={localFields.age}
+                  onChange={(e) => handleLocalChange('age', e.target.value)}
+                  onBlur={() => syncField('age', parseInt(localFields.age) || 0)}
                   className="w-12 bg-transparent border-b border-transparent hover:border-natural-200 focus:border-sage-500 focus:outline-hidden"
                 />
               </div>
@@ -133,8 +165,9 @@ export default function PatientDetails({ patient, onUpdate, onDelete }: PatientD
                 <span className="text-[10px] font-bold text-natural-300 uppercase tracking-widest">Adm. Date</span>
                 <input 
                   type="date"
-                  value={patient.admissionDate}
-                  onChange={(e) => handleFieldChange('admissionDate', e.target.value)}
+                  value={localFields.admissionDate}
+                  onChange={(e) => handleLocalChange('admissionDate', e.target.value)}
+                  onBlur={() => syncField('admissionDate', localFields.admissionDate)}
                   className="bg-transparent border-b border-transparent hover:border-natural-200 focus:border-sage-500 focus:outline-hidden"
                 />
               </div>
@@ -202,16 +235,18 @@ export default function PatientDetails({ patient, onUpdate, onDelete }: PatientD
                   <div>
                     <h4 className="text-[10px] font-bold text-natural-400 uppercase tracking-widest mb-2 px-1">Admission Diagnosis</h4>
                     <textarea 
-                      value={patient.admissionDiagnosis}
-                      onChange={(e) => handleFieldChange('admissionDiagnosis', e.target.value)}
+                      value={localFields.admissionDiagnosis}
+                      onChange={(e) => handleLocalChange('admissionDiagnosis', e.target.value)}
+                      onBlur={() => syncField('admissionDiagnosis', localFields.admissionDiagnosis)}
                       className="w-full text-natural-900 bg-natural-50 p-4 rounded-xl border border-natural-200 italic font-serif leading-relaxed min-h-[80px] focus:ring-1 focus:ring-sage-500 focus:outline-hidden"
                     />
                   </div>
                   <div>
                     <h4 className="text-[10px] font-bold text-natural-400 uppercase tracking-widest mb-2 px-1">Preliminary Diagnosis</h4>
                     <textarea 
-                      value={patient.preliminaryDiagnosis}
-                      onChange={(e) => handleFieldChange('preliminaryDiagnosis', e.target.value)}
+                      value={localFields.preliminaryDiagnosis}
+                      onChange={(e) => handleLocalChange('preliminaryDiagnosis', e.target.value)}
+                      onBlur={() => syncField('preliminaryDiagnosis', localFields.preliminaryDiagnosis)}
                       className="w-full text-natural-900 bg-natural-50 p-4 rounded-xl border border-natural-200 italic font-serif leading-relaxed min-h-[80px] focus:ring-1 focus:ring-sage-500 focus:outline-hidden"
                     />
                   </div>
@@ -223,8 +258,9 @@ export default function PatientDetails({ patient, onUpdate, onDelete }: PatientD
                   <h3 className="text-sm font-bold uppercase tracking-widest text-sage-600">Treatment Plan</h3>
                 </div>
                 <textarea 
-                  value={patient.treatmentPlan}
-                  onChange={(e) => handleFieldChange('treatmentPlan', e.target.value)}
+                  value={localFields.treatmentPlan}
+                  onChange={(e) => handleLocalChange('treatmentPlan', e.target.value)}
+                  onBlur={() => syncField('treatmentPlan', localFields.treatmentPlan)}
                   rows={6}
                   className="w-full bg-[#fdfbf7] p-6 rounded-xl border-l-4 border-sage-500 whitespace-pre-wrap leading-loose text-natural-800 text-sm font-medium italic focus:outline-hidden"
                 />

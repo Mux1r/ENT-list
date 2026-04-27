@@ -138,10 +138,27 @@ export default function App() {
     if (!user) return;
     try {
       const patientRef = doc(db, 'patients', updatedPatient.id);
+      
+      // 關鍵修復：僅擷取允許更新的欄位，避免傳送 id, ownerId, createdAt 等不可變欄位
+      const { 
+        name, bedNumber, age, gender, chartNumber, 
+        admissionDate, admissionDiagnosis, preliminaryDiagnosis, 
+        treatmentPlan, status 
+      } = updatedPatient;
+
       await updateDoc(patientRef, {
-        ...updatedPatient,
+        name,
+        bedNumber,
+        age,
+        gender,
+        chartNumber,
+        admissionDate,
+        admissionDiagnosis,
+        preliminaryDiagnosis,
+        treatmentPlan,
+        status,
         updatedAt: serverTimestamp()
-      } as any);
+      });
     } catch (error) {
       console.error("Error updating patient:", error);
     }
