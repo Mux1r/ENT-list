@@ -12,7 +12,7 @@ export interface ENTChecklist {
   woundStatus: 'Clean' | 'Hyperemia' | 'Discharge';
   painLevel: number; // 0-10
   fever: number; // Celsius
-  notes: string;
+  notes: { text: string; completed: boolean }[];
 }
 
 export interface Patient {

@@ -24,7 +24,7 @@ export async function generateClinicalPearls(patient: Patient): Promise<string[]
       - Airway: ${check.airway}
       - Swallowing: ${check.swallowing}
       - Drain: ${check.drainAmount}cc
-      - Notes: ${check.notes}
+      - Notes: ${check.notes.map(n => n.text + (n.completed ? ' (Done)' : '')).join(', ')}
     `).join('\n')}
   `;
 

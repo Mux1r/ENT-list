@@ -1,15 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ENTChecklist } from '../types';
 import { format } from 'date-fns';
-import { X, Save } from 'lucide-react';
-import { motion } from 'motion/react';
+import { X, Save, Plus, GripVertical, Trash2, ChevronUp, ChevronDown } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 
 interface DailyChecklistFormProps {
+  initialData?: ENTChecklist;
   onSubmit: (check: ENTChecklist) => void;
   onCancel: () => void;
 }
 
-export default function DailyChecklistForm({ onSubmit, onCancel }: DailyChecklistFormProps) {
+export default function DailyChecklistForm({ initialData, onSubmit, onCancel }: DailyChecklistFormProps) {
   const [formData, setFormData] = useState<Partial<ENTChecklist>>({
     date: new Date().toISOString(),
     bleeding: 'None',
@@ -21,19 +22,64 @@ export default function DailyChecklistForm({ onSubmit, onCancel }: DailyChecklis
     woundStatus: 'Clean',
     painLevel: 0,
     fever: 36.5,
-    notes: ''
+    notes: [{ text: '', completed: false }]
   });
+
+  useEffect(() => {
+    if (initialData) {
+      const normalizedNotes = Array.isArray(initialData.notes) 
+        ? initialData.notes 
+        : (typeof initialData.notes === 'string' ? [{ text: initialData.notes as string, completed: false }] : [{ text: '', completed: false }]);
+        
+      setFormData({
+        ...initialData,
+        notes: normalizedNotes.length > 0 ? normalizedNotes : [{ text: '', completed: false }]
+      });
+    }
+  }, [initialData]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const cleanNotes = (formData.notes || []).filter(n => n.text.trim() !== '');
     onSubmit({
       ...formData as ENTChecklist,
-      id: Math.random().toString(36).substring(7)
+      notes: cleanNotes.length > 0 ? cleanNotes : [{ text: '', completed: false }],
+      id: initialData?.id || Math.random().toString(36).substring(7)
     });
   };
 
   const updateField = (field: keyof ENTChecklist, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleNoteChange = (index: number, text: string) => {
+    const newNotes = [...(formData.notes || [])];
+    newNotes[index] = { ...newNotes[index], text };
+    updateField('notes', newNotes);
+  };
+
+  const toggleNoteCompletion = (index: number) => {
+    const newNotes = [...(formData.notes || [])];
+    newNotes[index] = { ...newNotes[index], completed: !newNotes[index].completed };
+    updateField('notes', newNotes);
+  };
+
+  const moveNote = (index: number, direction: 'up' | 'down') => {
+    const newNotes = [...(formData.notes || [])];
+    const newIndex = direction === 'up' ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= newNotes.length) return;
+    
+    [newNotes[index], newNotes[newIndex]] = [newNotes[newIndex], newNotes[index]];
+    updateField('notes', newNotes);
+  };
+
+  const addNote = () => {
+    updateField('notes', [...(formData.notes || []), { text: '', completed: false }]);
+  };
+
+  const removeNote = (index: number) => {
+    const newNotes = (formData.notes || []).filter((_, i) => i !== index);
+    updateField('notes', newNotes.length > 0 ? newNotes : [{ text: '', completed: false }]);
   };
 
   const SelectionButton = ({ field, value, label, activeColor }: { field: keyof ENTChecklist, value: string, label: string, activeColor: string }) => (
@@ -56,11 +102,13 @@ export default function DailyChecklistForm({ onSubmit, onCancel }: DailyChecklis
       animate={{ opacity: 1, height: 'auto' }}
       className="bg-white rounded-2xl border border-natural-200 shadow-xl overflow-hidden mb-8"
     >
-      <div className="bg-sage-600 p-6 text-white flex justify-between items-center border-b border-sage-700">
+      <div className={`p-6 text-white flex justify-between items-center border-b transition-colors duration-500 ${initialData ? 'bg-sage-600 border-sage-700' : 'bg-sage-600 border-sage-700'}`}>
         <div>
-          <h3 className="text-xl font-serif font-bold tracking-tight">Record Daily Evaluation</h3>
-          <p className="text-[10px] text-sage-100 font-bold uppercase tracking-widest mt-1">
-            Ward Round: {format(new Date(), 'yyyy-MM-dd HH:mm')}
+          <h3 className="text-xl font-serif font-bold tracking-tight">
+            {initialData ? 'Edit Ward Round Record' : 'Record Daily Evaluation'}
+          </h3>
+          <p className={`text-[10px] font-bold uppercase tracking-widest mt-1 ${initialData ? 'text-sage-100' : 'text-sage-100'}`}>
+            Ward Round: {format(new Date(formData.date || new Date()), 'yyyy-MM-dd HH:mm')}
           </p>
         </div>
         <button onClick={onCancel} className="text-white opacity-60 hover:opacity-100 transition-opacity">
@@ -69,7 +117,7 @@ export default function DailyChecklistForm({ onSubmit, onCancel }: DailyChecklis
       </div>
 
       <form onSubmit={handleSubmit} className="p-8 space-y-8">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-natural-600">
           {/* Column 1: Primary Vitals */}
           <div className="space-y-6">
              <div>
@@ -151,7 +199,7 @@ export default function DailyChecklistForm({ onSubmit, onCancel }: DailyChecklis
              </div>
           </div>
 
-          {/* Column 3: Subjective & Progress */}
+          {/* Column 3: Subjective & Progress Checklist */}
           <div className="space-y-6">
              <div>
                <label className="block text-[10px] font-bold text-natural-400 uppercase tracking-widest mb-2">Pain Level (VAS)</label>
@@ -173,14 +221,82 @@ export default function DailyChecklistForm({ onSubmit, onCancel }: DailyChecklis
              </div>
 
              <div>
-               <label className="block text-[10px] font-bold text-natural-400 uppercase tracking-widest mb-2">Clinical Rounding Notes</label>
-               <textarea 
-                rows={3}
-                value={formData.notes}
-                onChange={(e) => updateField('notes', e.target.value)}
-                placeholder="Enter clinical observations, plans..."
-                className="w-full px-4 py-3 bg-natural-50 border border-natural-200 rounded-xl text-xs focus:ring-2 focus:ring-sage-500/20 focus:border-sage-500 outline-hidden transition-all resize-none font-medium text-natural-800 placeholder-natural-300 italic"
-               />
+               <div className="flex justify-between items-center mb-3">
+                 <label className="block text-[10px] font-bold text-natural-400 uppercase tracking-widest">Rounding Checklist</label>
+                 <button 
+                  type="button" 
+                  onClick={addNote}
+                  className="flex items-center gap-1.5 text-sage-600 hover:text-sage-700 transition-colors"
+                 >
+                   <Plus className="w-3 h-3" />
+                   <span className="text-[10px] font-bold uppercase tracking-widest">Add Item</span>
+                 </button>
+               </div>
+               
+               <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
+                 <AnimatePresence initial={false}>
+                   {formData.notes?.map((note, index) => (
+                     <motion.div 
+                       key={index}
+                       layout
+                       initial={{ opacity: 0, x: -10 }}
+                       animate={{ opacity: 1, x: 0 }}
+                       exit={{ opacity: 0, x: 10 }}
+                       className="flex items-center gap-2 group"
+                     >
+                       <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                         <button 
+                            type="button" 
+                            onClick={() => moveNote(index, 'up')}
+                            disabled={index === 0}
+                            className="p-0.5 hover:bg-natural-100 rounded disabled:opacity-10 text-natural-400 hover:text-sage-600 transition-colors"
+                            title="Move up"
+                          >
+                            <ChevronUp className="w-3 h-3" />
+                         </button>
+                         <button 
+                            type="button" 
+                            onClick={() => moveNote(index, 'down')}
+                            disabled={index === (formData.notes || []).length - 1}
+                            className="p-0.5 hover:bg-natural-100 rounded disabled:opacity-10 text-natural-400 hover:text-sage-600 transition-colors"
+                            title="Move down"
+                          >
+                            <ChevronDown className="w-3 h-3" />
+                         </button>
+                       </div>
+                       
+                       <button
+                         type="button"
+                         onClick={() => toggleNoteCompletion(index)}
+                         className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all shrink-0 ${
+                           note.completed ? 'bg-sage-500 border-sage-500' : 'bg-white border-natural-200 hover:border-natural-300'
+                         }`}
+                       >
+                         {note.completed && <X className="w-3.5 h-3.5 text-white" />}
+                       </button>
+
+                       <input 
+                        type="text"
+                        value={note.text}
+                        onChange={(e) => handleNoteChange(index, e.target.value)}
+                        placeholder={`Point ${index + 1}...`}
+                        className={`flex-1 bg-natural-50 text-xs px-3 py-2 rounded-lg border focus:outline-hidden transition-all text-natural-800 placeholder-natural-300 font-medium ${
+                          note.completed ? 'line-through text-natural-400 border-natural-100' : 'border-natural-200 focus:border-sage-500 focus:ring-1 focus:ring-sage-500'
+                        }`}
+                       />
+                       
+                       <button 
+                        type="button"
+                        onClick={() => removeNote(index)}
+                        className="p-2 text-natural-300 hover:text-terracotta-500 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-0"
+                        disabled={(formData.notes || []).length <= 1}
+                       >
+                         <Trash2 className="w-3.5 h-3.5" />
+                       </button>
+                     </motion.div>
+                   ))}
+                 </AnimatePresence>
+               </div>
              </div>
           </div>
         </div>
@@ -195,10 +311,14 @@ export default function DailyChecklistForm({ onSubmit, onCancel }: DailyChecklis
            </button>
            <button 
             type="submit"
-            className="flex items-center gap-2 bg-sage-500 text-white px-10 py-3 rounded-lg font-bold text-xs uppercase tracking-widest shadow-md shadow-sage-100 hover:bg-sage-600 transition-all border border-sage-600"
+            className={`flex items-center gap-2 text-white px-10 py-3 rounded-lg font-bold text-xs uppercase tracking-widest shadow-md transition-all border ${
+              initialData 
+                ? 'bg-sage-500 hover:bg-sage-600 shadow-sage-100 border-sage-600' 
+                : 'bg-sage-500 hover:bg-sage-600 shadow-sage-100 border-sage-600'
+            }`}
            >
              <Save className="w-4 h-4" />
-             Save Record
+             {initialData ? 'Update Record' : 'Save Record'}
            </button>
         </div>
       </form>

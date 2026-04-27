@@ -9,6 +9,7 @@ import {
   Activity, 
   ClipboardList, 
   ChevronRight,
+  ChevronLeft,
   Filter,
   Stethoscope,
   FileUp,
@@ -64,7 +65,7 @@ const MOCK_PATIENTS: Patient[] = [
         woundStatus: 'Clean',
         painLevel: 2,
         fever: 36.8,
-        notes: 'MLS post-op Day 1. Voice rest strictly followed.'
+        notes: [{ text: 'MLS post-op Day 1. Voice rest strictly followed.', completed: false }]
       }
     ]
   },
@@ -90,6 +91,7 @@ export default function App() {
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
 
@@ -255,60 +257,89 @@ export default function App() {
   return (
     <div className="flex h-screen bg-natural-50 overflow-hidden font-sans text-natural-600">
       {/* Sidebar */}
-      <nav id="sidebar" className="w-64 bg-natural-100 border-r border-natural-200 flex flex-col shrink-0">
-        <div className="p-6 flex items-center gap-3">
-          <div className="p-2 bg-sage-500 rounded-lg shadow-sm">
+      <motion.nav 
+        id="sidebar" 
+        initial={false}
+        animate={{ width: isSidebarCollapsed ? 80 : 256 }}
+        transition={{ duration: 0.2, ease: "easeOut" }}
+        className="bg-natural-100 border-r border-natural-200 flex flex-col shrink-0 relative"
+      >
+        <button 
+          onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+          className="absolute -right-3 top-20 bg-white border border-natural-200 rounded-full p-1 shadow-sm text-natural-400 hover:text-sage-600 z-50 transition-colors"
+        >
+          {isSidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+        </button>
+
+        <div className={`p-6 flex items-center gap-3 ${isSidebarCollapsed ? 'justify-center' : ''}`}>
+          <div className="p-2 bg-sage-500 rounded-lg shadow-sm shrink-0">
             <Ear className="w-6 h-6 text-white" />
           </div>
-          <div>
-            <h1 className="text-xl font-serif font-bold text-natural-900 tracking-tight leading-none">ENT 住院</h1>
-            <p className="text-[10px] uppercase tracking-widest text-natural-400 font-bold mt-1">Rounding System</p>
-          </div>
+          {!isSidebarCollapsed && (
+            <motion.div
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.1 }}
+            >
+              <h1 className="text-xl font-serif font-bold text-natural-900 tracking-tight leading-none">ENT 住院</h1>
+              <p className="text-[10px] uppercase tracking-widest text-natural-400 font-bold mt-1">Rounding System</p>
+            </motion.div>
+          )}
         </div>
 
         <div className="flex-1 px-4 space-y-1.5 mt-4">
           <button 
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold text-sm ${
               !selectedPatientId ? 'bg-sage-100 text-sage-700 shadow-xs' : 'text-natural-400 hover:bg-white hover:text-natural-600'
-            }`}
+            } ${isSidebarCollapsed ? 'justify-center px-0' : ''}`}
             onClick={() => setSelectedPatientId(null)}
+            title={isSidebarCollapsed ? "病患列表" : undefined}
           >
-            <Users className="w-4 h-4" />
-            <span>病患列表</span>
+            <Users className="w-4 h-4 shrink-0" />
+            {!isSidebarCollapsed && <span>病患列表</span>}
           </button>
-          <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-natural-400 hover:bg-white hover:text-natural-600 transition-all font-bold text-sm">
-            <ClipboardList className="w-4 h-4" />
-            <span>今日排程</span>
+          <button 
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-natural-400 hover:bg-white hover:text-natural-600 transition-all font-bold text-sm ${isSidebarCollapsed ? 'justify-center px-0' : ''}`}
+            title={isSidebarCollapsed ? "今日排程" : undefined}
+          >
+            <ClipboardList className="w-4 h-4 shrink-0" />
+            {!isSidebarCollapsed && <span>今日排程</span>}
           </button>
-          <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-natural-400 hover:bg-white hover:text-natural-600 transition-all font-bold text-sm">
-            <Stethoscope className="w-4 h-4" />
-            <span>臨床指引</span>
+          <button 
+            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-natural-400 hover:bg-white hover:text-natural-600 transition-all font-bold text-sm ${isSidebarCollapsed ? 'justify-center px-0' : ''}`}
+            title={isSidebarCollapsed ? "臨床指引" : undefined}
+          >
+            <Stethoscope className="w-4 h-4 shrink-0" />
+            {!isSidebarCollapsed && <span>臨床指引</span>}
           </button>
         </div>
 
         <div className="p-4 mt-auto border-t border-natural-200">
-          <div className="flex items-center gap-3 p-3 bg-white rounded-xl border border-natural-200">
+          <div className={`flex items-center gap-3 p-3 bg-white rounded-xl border border-natural-200 ${isSidebarCollapsed ? 'justify-center p-2' : ''}`}>
             {user.photoURL ? (
-              <img src={user.photoURL} alt="Profile" className="w-8 h-8 rounded-full border border-natural-100" />
+              <img src={user.photoURL} alt="Profile" className="w-8 h-8 rounded-full border border-natural-100 shrink-0 object-cover" />
             ) : (
-              <div className="w-8 h-8 rounded-full bg-sage-100 flex items-center justify-center font-bold text-sage-700 text-xs text-uppercase">
+              <div className="w-8 h-8 rounded-full bg-sage-100 flex items-center justify-center font-bold text-sage-700 text-xs text-uppercase shrink-0">
                 {user.displayName?.charAt(0) || 'D'}
               </div>
             )}
-            <div className="flex-1 truncate">
-              <p className="text-xs font-bold text-natural-900 truncate">{user.displayName || 'Doctor'}</p>
-              <p className="text-[10px] text-natural-400 uppercase truncate">ENT Specialist</p>
-            </div>
+            {!isSidebarCollapsed && (
+              <div className="flex-1 truncate">
+                <p className="text-xs font-bold text-natural-900 truncate">{user.displayName || 'Doctor'}</p>
+                <p className="text-[10px] text-natural-400 uppercase truncate">ENT Specialist</p>
+              </div>
+            )}
           </div>
           <button 
             onClick={logout}
-            className="w-full flex items-center justify-center gap-2 mt-4 text-natural-400 hover:text-terracotta-500 text-xs font-bold transition-colors"
+            className={`w-full flex items-center justify-center gap-2 mt-4 text-natural-400 hover:text-terracotta-500 text-xs font-bold transition-colors ${isSidebarCollapsed ? 'p-2' : ''}`}
+            title={isSidebarCollapsed ? "登出系統" : undefined}
           >
-            <LogOut className="w-4 h-4" />
-            登出系統
+            <LogOut className="w-4 h-4 shrink-0" />
+            {!isSidebarCollapsed && <span>登出系統</span>}
           </button>
         </div>
-      </nav>
+      </motion.nav>
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
