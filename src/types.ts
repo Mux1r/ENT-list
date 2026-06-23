@@ -8,11 +8,44 @@ export interface ENTChecklist {
   swallowing: 'Normal' | 'Dysphagia' | 'NPO';
   facialNerve: 'Intact' | 'Paresis' | 'Paralysis';
   hoarseness: boolean;
-  drainAmount: number; // in cc
+  drainAmount: number;
   woundStatus: 'Clean' | 'Hyperemia' | 'Discharge';
-  painLevel: number; // 0-10
-  fever: number; // Celsius
+  painLevel: number;
+  fever: number;
   notes: { text: string; completed: boolean }[];
+}
+
+export interface Medication {
+  id: string;
+  name: string;
+  dose: string;
+  frequency: string;
+  route?: string;
+  startDate: string;
+  endDate?: string;
+  stopReason?: string;
+}
+
+export interface LabTest {
+  id: string;
+  name: string;
+  orderedDate: string;
+  resultDate?: string;
+  value?: string;
+  unit?: string;
+  referenceRange?: string;
+  isAbnormal?: boolean;
+  abnormalDir?: 'H' | 'L';
+  status: 'pending' | 'resulted';
+  category?: string;
+}
+
+export interface Examination {
+  id: string;
+  name: string;
+  orderedDate: string;
+  status: 'pending' | 'resulted';
+  finding?: string;
 }
 
 export interface Patient {
@@ -23,10 +56,15 @@ export interface Patient {
   gender: Gender;
   chartNumber: string;
   admissionDate: string;
-  admissionDiagnosis: string;
-  preliminaryDiagnosis: string;
-  treatmentPlan: string;
-  status: 'Stable' | 'Critical' | 'Discharge Pending';
+  diagnosis: string;
+  status: 'Stable' | 'Critical' | 'Discharge Pending' | 'Discharged';
+  medications: Medication[];
+  labTests: LabTest[];
+  examinations: Examination[];
   clinicalPearls?: string[];
   dailyChecks: ENTChecklist[];
+  // kept optional for backward compat with existing Firestore docs
+  admissionDiagnosis?: string;
+  preliminaryDiagnosis?: string;
+  treatmentPlan?: string;
 }

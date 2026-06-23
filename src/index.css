@@ -1,10 +1,10 @@
 @import "tailwindcss";
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@700&family=Space+Grotesk:wght@500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&display=swap');
 
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Space Grotesk", sans-serif;
-  --font-serif: "Playfair Display", ui-serif, Georgia, serif;
+  --font-sans: "JetBrains Mono", ui-monospace, monospace;
+  --font-serif: "JetBrains Mono", ui-monospace, monospace;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
   
   --color-natural-50: #fdfbf7;
   --color-natural-100: #f8f5f0;
@@ -32,13 +32,6 @@ body {
   @apply bg-natural-50 text-natural-600 font-sans antialiased;
 }
 
-h1, .font-serif-clinical {
-  @apply font-serif;
-}
-
-.font-display-modern {
-  @apply font-display;
-}
 
 @utility no-scrollbar {
   &::-webkit-scrollbar {

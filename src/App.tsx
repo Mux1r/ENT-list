@@ -1,20 +1,22 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Users, 
-  Search, 
-  Plus, 
-  Settings, 
-  LogOut, 
-  Ear, 
-  Activity, 
-  ClipboardList, 
+import {
+  Users,
+  Search,
+  Plus,
+  LogOut,
+  Ear,
+  ClipboardList,
   ChevronRight,
   ChevronLeft,
-  Filter,
   Stethoscope,
+  Menu,
   FileUp,
   LogIn,
-  Loader2
+  Loader2,
+  Trash2,
+  Check,
+  Pencil,
+  X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Patient, ENTChecklist } from './types';
@@ -22,68 +24,22 @@ import PatientDetails from './components/PatientDetails';
 import PatientForm from './components/PatientForm';
 import ImportModal from './components/ImportModal';
 import { db, auth, loginWithGoogle, logout } from './lib/firebase';
-import { 
-  collection, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  doc, 
-  onSnapshot, 
-  query, 
-  where, 
+import {
+  collection,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  query,
+  where,
   serverTimestamp,
   orderBy,
-  setDoc
+  setDoc,
+  writeBatch
 } from 'firebase/firestore';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { format } from 'date-fns';
-
-// Mock Initial Data
-const MOCK_PATIENTS: Patient[] = [
-  {
-    id: '1',
-    name: '王大明',
-    bedNumber: '7A-01',
-    age: 55,
-    gender: 'Male',
-    chartNumber: '1234567',
-    admissionDate: '2026-04-20',
-    admissionDiagnosis: 'Left Vocal Fold Polyp',
-    preliminaryDiagnosis: 'Left Vocal Fold Polyp, suspected malignancy R/O',
-    treatmentPlan: '1. Micro-laryngeal surgery (MLS)\n2. Post-op voice rest\n3. Speech therapy referral',
-    status: 'Stable',
-    dailyChecks: [
-      {
-        id: 'c1',
-        date: '2026-04-21T08:00:00Z',
-        bleeding: 'None',
-        airway: 'Clear',
-        swallowing: 'Normal',
-        facialNerve: 'Intact',
-        hoarseness: true,
-        drainAmount: 0,
-        woundStatus: 'Clean',
-        painLevel: 2,
-        fever: 36.8,
-        notes: [{ text: 'MLS post-op Day 1. Voice rest strictly followed.', completed: false }]
-      }
-    ]
-  },
-  {
-    id: '2',
-    name: '李小美',
-    bedNumber: '7B-12',
-    age: 32,
-    gender: 'Female',
-    chartNumber: '7654321',
-    admissionDate: '2026-04-25',
-    admissionDiagnosis: 'Chronic Rhinosinusitis with Nasal Polyps',
-    preliminaryDiagnosis: 'Chronic Rhinosinusitis with Nasal Polyps, Bilateral',
-    treatmentPlan: '1. Functional Endoscopic Sinus Surgery (FESS)\n2. Nasal packing for 48 hours\n3. Post-op nasal irrigation',
-    status: 'Stable',
-    dailyChecks: []
-  }
-];
 
 export default function App() {
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -91,7 +47,13 @@ export default function App() {
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(false);
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showDischarged, setShowDischarged] = useState(false);
+  const [showPatientSwitcher, setShowPatientSwitcher] = useState(false);
+  const [showSearch, setShowSearch] = useState(false);
+  const toggleSearch = () => { setShowSearch(s => { if (s) setSearchTerm(''); return !s; }); };
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
 
@@ -120,9 +82,16 @@ export default function App() {
       snapshot.forEach((doc) => {
         const data = doc.data();
         if (data.dailyChecks) {
-          data.dailyChecks.sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+          data.dailyChecks = [...data.dailyChecks].sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
         }
-        patientData.push({ ...data, id: doc.id } as Patient);
+        patientData.push({
+          medications: [],
+          labTests: [],
+          examinations: [],
+          ...data,
+          diagnosis: data.diagnosis || data.admissionDiagnosis || '',
+          id: doc.id,
+        } as Patient);
       });
       setPatients(patientData);
     }, (error) => {
@@ -134,41 +103,45 @@ export default function App() {
 
   const selectedPatient = patients.find(p => p.id === selectedPatientId);
 
-  const filteredPatients = patients.filter(p => 
-    p.name.includes(searchTerm) || 
-    p.bedNumber.includes(searchTerm) || 
-    p.chartNumber.includes(searchTerm)
-  );
+  const filteredPatients = patients.filter(p => {
+    if (showDischarged) return p.status === 'Discharged';
+    return p.status !== 'Discharged' && (
+      p.name.includes(searchTerm) ||
+      p.bedNumber.includes(searchTerm) ||
+      p.chartNumber.includes(searchTerm)
+    );
+  });
+  const dischargedCount = patients.filter(p => p.status === 'Discharged').length;
+  const activeCount = patients.filter(p => p.status !== 'Discharged').length;
 
   const handleUpdatePatient = async (updatedPatient: Patient) => {
     if (!user) return;
     try {
       const patientRef = doc(db, 'patients', updatedPatient.id);
-      
-      // 關鍵修復：僅擷取允許更新的欄位，避免傳送 id, ownerId, createdAt 等不可變欄位
-      const { 
-        name, bedNumber, age, gender, chartNumber, 
-        admissionDate, admissionDiagnosis, preliminaryDiagnosis, 
-        treatmentPlan, status, dailyChecks, clinicalPearls
+
+      const {
+        name, bedNumber, age, gender, chartNumber,
+        admissionDate, diagnosis, status, dailyChecks, clinicalPearls,
+        medications, labTests, examinations,
       } = updatedPatient;
 
+      // Firestore rejects undefined values — strip them via JSON round-trip
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const clean = (v: any) => JSON.parse(JSON.stringify(v));
+
       await updateDoc(patientRef, {
-        name,
-        bedNumber,
-        age,
-        gender,
-        chartNumber,
-        admissionDate,
-        admissionDiagnosis,
-        preliminaryDiagnosis,
-        treatmentPlan,
-        status,
-        dailyChecks,
-        clinicalPearls: clinicalPearls || [],
+        name, bedNumber, age, gender, chartNumber,
+        admissionDate, diagnosis, status,
+        dailyChecks: clean(dailyChecks || []),
+        clinicalPearls: clean(clinicalPearls || []),
+        medications: clean(medications || []),
+        labTests: clean(labTests || []),
+        examinations: clean(examinations || []),
         updatedAt: serverTimestamp()
       });
     } catch (error) {
       console.error("Error updating patient:", error);
+      alert(`儲存失敗：${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
@@ -184,32 +157,70 @@ export default function App() {
     }
   };
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const exitEditMode = () => {
+    setIsEditMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const handleBatchDelete = async () => {
+    if (!user || selectedIds.size === 0) return;
+    if (!confirm(`確定要刪除選取的 ${selectedIds.size} 位病患？此操作無法復原。`)) return;
+    try {
+      const batch = writeBatch(db);
+      selectedIds.forEach(id => batch.delete(doc(db, 'patients', id)));
+      await batch.commit();
+      setSelectedIds(new Set());
+      setIsEditMode(false);
+    } catch (error) {
+      console.error("Error batch deleting:", error);
+    }
+  };
+
   const handleAddPatient = async (newPatientData: Omit<Patient, 'id'>) => {
     if (!user) return;
     try {
       const patientsRef = collection(db, 'patients');
       const newDocRef = doc(patientsRef);
-      const newPatientWithId = {
-        ...newPatientData,
-        id: newDocRef.id,
-        ownerId: user.uid,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const clean = (v: any) => JSON.parse(JSON.stringify(v));
+      await setDoc(newDocRef, {
+        ...clean({ ...newPatientData, id: newDocRef.id, ownerId: user.uid }),
         createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      };
-      await setDoc(newDocRef, newPatientWithId);
+        updatedAt: serverTimestamp(),
+      });
       setShowAddForm(false);
     } catch (error) {
       console.error("Error adding patient:", error);
+      alert('新增失敗，請稍後再試。');
     }
   };
 
   const handleBatchImport = async (importedPatients: Patient[]) => {
     if (!user) return;
     try {
-      for (const patient of importedPatients) {
-        const patientsRef = collection(db, 'patients');
+      const existingChartNos = new Set(patients.map(p => p.chartNumber));
+      const toImport = importedPatients.filter(p => !existingChartNos.has(p.chartNumber));
+      const skipped = importedPatients.length - toImport.length;
+
+      if (toImport.length === 0) {
+        alert(`所有 ${importedPatients.length} 位病患已存在（依病歷號比對），略過匯入。`);
+        setShowImportModal(false);
+        return;
+      }
+
+      const batch = writeBatch(db);
+      const patientsRef = collection(db, 'patients');
+      for (const patient of toImport) {
         const newDocRef = doc(patientsRef);
-        await setDoc(newDocRef, {
+        batch.set(newDocRef, {
           ...patient,
           id: newDocRef.id,
           ownerId: user.uid,
@@ -217,8 +228,9 @@ export default function App() {
           updatedAt: serverTimestamp()
         });
       }
+      await batch.commit();
       setShowImportModal(false);
-      alert(`成功匯入 ${importedPatients.length} 位病患資料`);
+      alert(`成功匯入 ${toImport.length} 位病患${skipped > 0 ? `，略過 ${skipped} 位已存在病患` : ''}。`);
     } catch (error) {
       console.error("Error batch importing:", error);
     }
@@ -259,121 +271,101 @@ export default function App() {
   }
 
   return (
-    <div className="flex h-screen bg-natural-50 overflow-hidden font-sans text-natural-600">
-      {/* Sidebar */}
-      <motion.nav 
-        id="sidebar" 
-        initial={false}
-        animate={{ width: isSidebarCollapsed ? 80 : 256 }}
-        transition={{ duration: 0.2, ease: "easeOut" }}
-        className="bg-natural-100 border-r border-natural-200 flex flex-col shrink-0 relative"
-      >
-        <button 
-          onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-          className="absolute -right-3 top-20 bg-white border border-natural-200 rounded-full p-1 shadow-sm text-natural-400 hover:text-sage-600 z-50 transition-colors"
-        >
-          {isSidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
-        </button>
-
-        <div className={`p-6 flex items-center gap-3 ${isSidebarCollapsed ? 'justify-center' : ''}`}>
-          <div className="p-2 bg-sage-500 rounded-lg shadow-sm shrink-0">
-            <Ear className="w-6 h-6 text-white" />
-          </div>
-          {!isSidebarCollapsed && (
-            <motion.div
-              initial={{ opacity: 0, x: -10 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.1 }}
-            >
-              <h1 className="text-xl font-serif font-bold text-natural-900 tracking-tight leading-none">ENT 住院</h1>
-              <p className="text-[10px] uppercase tracking-widest text-natural-400 font-bold mt-1">Rounding System</p>
-            </motion.div>
-          )}
-        </div>
-
-        <div className="flex-1 px-4 space-y-1.5 mt-4">
-          <button 
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-bold text-sm ${
-              !selectedPatientId ? 'bg-sage-100 text-sage-700 shadow-xs' : 'text-natural-400 hover:bg-white hover:text-natural-600'
-            } ${isSidebarCollapsed ? 'justify-center px-0' : ''}`}
-            onClick={() => setSelectedPatientId(null)}
-            title={isSidebarCollapsed ? "病患列表" : undefined}
-          >
-            <Users className="w-4 h-4 shrink-0" />
-            {!isSidebarCollapsed && <span>病患列表</span>}
-          </button>
-          <button 
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-natural-400 hover:bg-white hover:text-natural-600 transition-all font-bold text-sm ${isSidebarCollapsed ? 'justify-center px-0' : ''}`}
-            title={isSidebarCollapsed ? "今日排程" : undefined}
-          >
-            <ClipboardList className="w-4 h-4 shrink-0" />
-            {!isSidebarCollapsed && <span>今日排程</span>}
-          </button>
-          <button 
-            className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-natural-400 hover:bg-white hover:text-natural-600 transition-all font-bold text-sm ${isSidebarCollapsed ? 'justify-center px-0' : ''}`}
-            title={isSidebarCollapsed ? "臨床指引" : undefined}
-          >
-            <Stethoscope className="w-4 h-4 shrink-0" />
-            {!isSidebarCollapsed && <span>臨床指引</span>}
-          </button>
-        </div>
-
-        <div className="p-4 mt-auto border-t border-natural-200">
-          <div className={`flex items-center gap-3 p-3 bg-white rounded-xl border border-natural-200 ${isSidebarCollapsed ? 'justify-center p-2' : ''}`}>
-            {user.photoURL ? (
-              <img src={user.photoURL} alt="Profile" className="w-8 h-8 rounded-full border border-natural-100 shrink-0 object-cover" />
-            ) : (
-              <div className="w-8 h-8 rounded-full bg-sage-100 flex items-center justify-center font-bold text-sage-700 text-xs text-uppercase shrink-0">
-                {user.displayName?.charAt(0) || 'D'}
-              </div>
-            )}
-            {!isSidebarCollapsed && (
-              <div className="flex-1 truncate">
-                <p className="text-xs font-bold text-natural-900 truncate">{user.displayName || 'Doctor'}</p>
-                <p className="text-[10px] text-natural-400 uppercase truncate">ENT Specialist</p>
-              </div>
-            )}
-          </div>
-          <button 
-            onClick={logout}
-            className={`w-full flex items-center justify-center gap-2 mt-4 text-natural-400 hover:text-terracotta-500 text-xs font-bold transition-colors ${isSidebarCollapsed ? 'p-2' : ''}`}
-            title={isSidebarCollapsed ? "登出系統" : undefined}
-          >
-            <LogOut className="w-4 h-4 shrink-0" />
-            {!isSidebarCollapsed && <span>登出系統</span>}
-          </button>
-        </div>
-      </motion.nav>
-
+    <div className="h-screen bg-natural-50 overflow-hidden font-sans text-natural-600">
       {/* Main Content */}
-      <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        <header className="h-16 bg-white border-b border-natural-200 px-8 flex items-center justify-between shrink-0 shadow-sm z-10">
-          <div className="flex items-center gap-4 flex-1">
-            <div className="relative max-w-md w-full">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-natural-300" />
-              <input 
-                type="text" 
-                placeholder="搜尋病患姓名, 床號或病歷號..." 
-                className="w-full pl-10 pr-4 py-2 bg-natural-50 border border-natural-200 rounded-lg text-sm focus:bg-white focus:ring-2 focus:ring-sage-500/20 focus:border-sage-500 transition-all outline-hidden"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <button 
-              onClick={() => setShowImportModal(true)}
-              className="flex items-center gap-2 bg-natural-100 text-natural-600 px-4 py-2 rounded-lg text-sm font-bold border border-natural-200 hover:bg-natural-200 transition-all shadow-xs"
+      <main className="h-full flex flex-col overflow-hidden relative">
+        <header className="h-16 bg-white border-b border-natural-200 px-6 flex items-center gap-4 justify-between shrink-0 shadow-sm z-10">
+          {/* Left: menu + nav context */}
+          <div className="flex items-center gap-3 shrink-0">
+            <button
+              onClick={() => setShowSidebar(true)}
+              className="p-2 rounded-lg text-natural-400 hover:text-natural-700 hover:bg-natural-100 transition-colors"
             >
-              <FileUp className="w-4 h-4" />
-              資料匯入
+              <Menu className="w-4 h-4" />
             </button>
-            <button 
-              onClick={() => setShowAddForm(true)}
-              className="flex items-center gap-2 bg-sage-500 text-white px-5 py-2 rounded-lg text-sm font-bold hover:bg-sage-600 transition-all shadow-sm"
-            >
-              <Plus className="w-4 h-4" />
-              新增病患
+            {selectedPatientId ? (
+              <>
+                <button
+                  onClick={() => setSelectedPatientId(null)}
+                  className="flex items-center gap-1 text-xs font-bold uppercase tracking-widest text-natural-400 hover:text-sage-600 group transition-colors"
+                >
+                  <ChevronRight className="w-4 h-4 rotate-180 group-hover:-translate-x-0.5 transition-transform" />
+                  返回
+                </button>
+                <span className="text-natural-200">|</span>
+                <button
+                  onClick={() => setShowPatientSwitcher(true)}
+                  className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-natural-400 hover:text-sage-600 transition-colors"
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  切換
+                </button>
+              </>
+            ) : (
+              <div className="flex gap-0.5 p-0.5 bg-natural-100 rounded-lg border border-natural-200">
+                <button
+                  onClick={() => { setShowDischarged(false); setIsEditMode(false); }}
+                  className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${!showDischarged ? 'bg-white text-sage-700 shadow-sm' : 'text-natural-400 hover:text-natural-600'}`}
+                >
+                  住院中 <span className={`ml-1 text-[10px] ${!showDischarged ? 'text-sage-500' : 'text-natural-300'}`}>{activeCount}</span>
+                </button>
+                <button
+                  onClick={() => { setShowDischarged(true); setIsEditMode(false); }}
+                  className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${showDischarged ? 'bg-white text-natural-700 shadow-sm' : 'text-natural-400 hover:text-natural-600'}`}
+                >
+                  已出院 <span className={`ml-1 text-[10px] ${showDischarged ? 'text-natural-500' : 'text-natural-300'}`}>{dischargedCount}</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Right: search + actions */}
+          <div className="flex items-center gap-2">
+            {/* Expandable search */}
+            <div className="flex items-center gap-1">
+              <AnimatePresence>
+                {showSearch && (
+                  <motion.div
+                    initial={{ width: 0, opacity: 0 }}
+                    animate={{ width: 220, opacity: 1 }}
+                    exit={{ width: 0, opacity: 0 }}
+                    transition={{ duration: 0.18 }}
+                    className="overflow-hidden"
+                  >
+                    <input
+                      autoFocus
+                      type="text"
+                      placeholder="搜尋姓名、床號、病歷號..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Escape' && toggleSearch()}
+                      className="w-full px-3 py-2 bg-natural-50 border border-natural-200 rounded-lg text-sm focus:bg-white focus:ring-2 focus:ring-sage-500/20 focus:border-sage-500 outline-hidden"
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+              <button
+                onClick={toggleSearch}
+                className="p-2 rounded-lg text-natural-400 hover:text-natural-700 hover:bg-natural-100 transition-colors"
+              >
+                {showSearch ? <X className="w-4 h-4" /> : <Search className="w-4 h-4" />}
+              </button>
+            </div>
+
+            {!selectedPatientId && (
+              isEditMode ? (
+                <button onClick={exitEditMode} className="px-4 py-2 rounded-lg text-xs font-bold bg-natural-100 text-natural-600 border border-natural-200 hover:bg-natural-200 transition-all">完成</button>
+              ) : (
+                <button onClick={() => setIsEditMode(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold bg-natural-100 text-natural-600 border border-natural-200 hover:bg-natural-200 transition-all">
+                  <Pencil className="w-3.5 h-3.5" />編輯
+                </button>
+              )
+            )}
+            <button onClick={() => setShowImportModal(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold bg-natural-100 text-natural-600 border border-natural-200 hover:bg-natural-200 transition-all">
+              <FileUp className="w-3.5 h-3.5" />匯入
+            </button>
+            <button onClick={() => setShowAddForm(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold bg-sage-500 text-white hover:bg-sage-600 transition-all shadow-sm">
+              <Plus className="w-3.5 h-3.5" />新增病患
             </button>
           </div>
         </header>
@@ -395,42 +387,47 @@ export default function App() {
         <div className="flex-1 overflow-auto p-8">
           <AnimatePresence mode="wait">
             {!selectedPatientId ? (
-              <motion.div 
+              <motion.div
                 key="list"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+                className="bg-white rounded-2xl border border-natural-200 shadow-sm overflow-hidden"
               >
-                {filteredPatients.map(patient => (
-                  <button 
-                    key={patient.id}
-                    onClick={() => setSelectedPatientId(patient.id)}
-                    className="group text-left bg-white p-6 rounded-2xl border border-natural-200 shadow-sm hover:shadow-md hover:border-sage-500 transition-all flex flex-col gap-4 relative overflow-hidden"
-                  >
-                    <div className="relative flex justify-between items-start">
-                      <div>
-                        <span className="px-2.5 py-0.5 rounded-md bg-sage-50 text-sage-600 text-[10px] font-bold uppercase tracking-wider mb-2 inline-block border border-sage-100">
-                          Bed {patient.bedNumber}
+                {filteredPatients.length === 0 ? (
+                  <div className="py-20 text-center">
+                    <Users className="w-10 h-10 text-natural-200 mx-auto mb-3" />
+                    <p className="text-natural-400 font-bold uppercase tracking-widest text-xs">尚無病患資料</p>
+                  </div>
+                ) : (
+                  filteredPatients.map(patient => {
+                    const isSelected = selectedIds.has(patient.id);
+                    return (
+                      <button
+                        key={patient.id}
+                        onClick={() => isEditMode ? toggleSelect(patient.id) : setSelectedPatientId(patient.id)}
+                        className={`group w-full flex items-center gap-4 px-6 py-4 text-left transition-colors border-b border-natural-50 last:border-b-0 ${
+                          isEditMode && isSelected ? 'bg-terracotta-50' : 'hover:bg-sage-50/50'
+                        }`}
+                      >
+                        {isEditMode && (
+                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${
+                            isSelected ? 'bg-terracotta-500 border-terracotta-500' : 'border-natural-300'
+                          }`}>
+                            {isSelected && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
+                          </div>
+                        )}
+                        <span className="text-[10px] font-bold text-sage-600 bg-sage-50 border border-sage-100 px-2 py-0.5 rounded uppercase tracking-wider w-16 shrink-0 text-center">
+                          {patient.bedNumber}
                         </span>
-                        <h3 className="text-xl font-serif font-bold text-natural-900 group-hover:text-sage-600 transition-colors">{patient.name}</h3>
-                        <p className="text-xs text-natural-400 font-medium">{patient.gender === 'Male' ? '男' : '女'} · {patient.age} 歲 · {patient.chartNumber}</p>
-                      </div>
-                      <ChevronRight className="w-5 h-5 text-natural-200 group-hover:text-sage-500 transition-colors" />
-                    </div>
-
-                    <div className="relative pt-4 border-t border-natural-100 flex flex-col gap-3">
-                       <div className="flex items-start gap-2">
-                         <Activity className="w-3.5 h-3.5 text-sage-500 mt-0.5 shrink-0" />
-                         <span className="text-xs font-serif italic text-natural-600 line-clamp-1">{patient.admissionDiagnosis}</span>
-                       </div>
-                       <div className="flex items-center gap-2 text-natural-400 text-[10px] uppercase font-bold tracking-tight">
-                         <ClipboardList className="w-3.5 h-3.5" />
-                         <span>Last Round: {patient.dailyChecks.length > 0 ? patient.dailyChecks[patient.dailyChecks.length - 1].date.split('T')[0] : 'None'}</span>
-                       </div>
-                    </div>
-                  </button>
-                ))}
+                        <span className="font-bold text-natural-900 w-24 shrink-0 truncate">{patient.name}</span>
+                        <span className="text-sm text-natural-400 w-10 shrink-0">{patient.age}y</span>
+                        <span className="text-sm text-natural-500 truncate flex-1">{patient.diagnosis}</span>
+                        {!isEditMode && <ChevronRight className="w-4 h-4 text-natural-200 group-hover:text-sage-400 shrink-0 transition-colors" />}
+                      </button>
+                    );
+                  })
+                )}
               </motion.div>
             ) : selectedPatient ? (
               <motion.div
@@ -440,15 +437,6 @@ export default function App() {
                 exit={{ opacity: 0, x: -20 }}
                 className="max-w-6xl mx-auto"
               >
-                <div className="mb-6">
-                  <button 
-                    onClick={() => setSelectedPatientId(null)}
-                    className="text-xs font-bold uppercase tracking-widest text-natural-400 hover:text-sage-600 flex items-center gap-1 mb-4 group transition-colors"
-                  >
-                    <ChevronRight className="w-4 h-4 rotate-180 group-hover:-translate-x-1 transition-transform" />
-                    Back to Patient List
-                  </button>
-                </div>
                 <PatientDetails 
                   patient={selectedPatient} 
                   onUpdate={handleUpdatePatient}
@@ -458,6 +446,150 @@ export default function App() {
             ) : null}
           </AnimatePresence>
         </div>
+
+        {/* Sidebar overlay */}
+        <AnimatePresence>
+          {showSidebar && (
+            <>
+              <div className="fixed inset-0 bg-natural-900/20 z-40" onClick={() => setShowSidebar(false)} />
+              <motion.nav
+                initial={{ x: -280 }}
+                animate={{ x: 0 }}
+                exit={{ x: -280 }}
+                transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+                className="fixed top-0 left-0 bottom-0 w-64 bg-natural-100 border-r border-natural-200 flex flex-col z-50 shadow-2xl"
+              >
+                <div className="p-6 flex items-center gap-3 border-b border-natural-200">
+                  <div className="p-2 bg-sage-500 rounded-lg shadow-sm shrink-0">
+                    <Ear className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h1 className="text-base font-bold text-natural-900 leading-none">ENT 住院</h1>
+                    <p className="text-[10px] uppercase tracking-widest text-natural-400 font-bold mt-0.5">Rounding System</p>
+                  </div>
+                  <button onClick={() => setShowSidebar(false)} className="ml-auto text-natural-300 hover:text-natural-600 transition-colors">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="flex-1 px-3 py-4 space-y-1">
+                  <button
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+                      !selectedPatientId ? 'bg-sage-100 text-sage-700' : 'text-natural-400 hover:bg-white hover:text-natural-600'
+                    }`}
+                    onClick={() => { setSelectedPatientId(null); setShowSidebar(false); }}
+                  >
+                    <Users className="w-4 h-4 shrink-0" />
+                    病患列表
+                  </button>
+                  <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-natural-400 hover:bg-white hover:text-natural-600 transition-all">
+                    <ClipboardList className="w-4 h-4 shrink-0" />
+                    今日排程
+                  </button>
+                  <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-natural-400 hover:bg-white hover:text-natural-600 transition-all">
+                    <Stethoscope className="w-4 h-4 shrink-0" />
+                    臨床指引
+                  </button>
+                </div>
+
+                <div className="p-4 border-t border-natural-200">
+                  <div className="flex items-center gap-3 p-3 bg-white rounded-xl border border-natural-200 mb-3">
+                    {user.photoURL ? (
+                      <img src={user.photoURL} alt="Profile" className="w-8 h-8 rounded-full border border-natural-100 shrink-0 object-cover" />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-sage-100 flex items-center justify-center font-bold text-sage-700 text-xs shrink-0">
+                        {user.displayName?.charAt(0) || 'D'}
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-natural-900 truncate">{user.displayName || 'Doctor'}</p>
+                      <p className="text-[10px] text-natural-400 uppercase truncate">ENT Specialist</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={logout}
+                    className="w-full flex items-center justify-center gap-2 text-natural-400 hover:text-terracotta-500 text-xs font-bold transition-colors py-2"
+                  >
+                    <LogOut className="w-4 h-4 shrink-0" />
+                    登出系統
+                  </button>
+                </div>
+              </motion.nav>
+            </>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {showPatientSwitcher && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setShowPatientSwitcher(false)} />
+              <motion.div
+                initial={{ x: -288 }}
+                animate={{ x: 0 }}
+                exit={{ x: -288 }}
+                transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+                className="fixed top-16 left-0 bottom-0 w-72 bg-white border-r border-natural-200 shadow-2xl z-50 flex flex-col"
+              >
+                <div className="px-5 py-4 border-b border-natural-100 flex items-center justify-between">
+                  <p className="text-[10px] font-bold text-natural-400 uppercase tracking-widest">切換病患</p>
+                  <button onClick={() => setShowPatientSwitcher(false)} className="text-natural-300 hover:text-natural-600 transition-colors text-xs font-bold">✕</button>
+                </div>
+                <div className="flex-1 overflow-y-auto">
+                  {patients.filter(p => p.status !== 'Discharged').map(patient => (
+                    <button
+                      key={patient.id}
+                      onClick={() => { setSelectedPatientId(patient.id); setShowPatientSwitcher(false); }}
+                      className={`w-full flex items-center gap-3 px-5 py-3.5 text-left transition-colors border-b border-natural-50 last:border-b-0 ${
+                        patient.id === selectedPatientId ? 'bg-sage-50' : 'hover:bg-natural-50'
+                      }`}
+                    >
+                      <span className="text-[9px] font-bold text-sage-600 bg-sage-50 border border-sage-100 px-1.5 py-0.5 rounded uppercase tracking-wider w-12 text-center shrink-0">
+                        {patient.bedNumber}
+                      </span>
+                      <div className="min-w-0">
+                        <p className={`text-sm font-bold truncate ${patient.id === selectedPatientId ? 'text-sage-700' : 'text-natural-900'}`}>{patient.name}</p>
+                        <p className="text-[10px] text-natural-400 truncate">{patient.age}y · {patient.diagnosis?.slice(0, 28)}{(patient.diagnosis?.length ?? 0) > 28 ? '…' : ''}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {isEditMode && (
+            <motion.div
+              initial={{ y: 80, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 80, opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+              className="absolute bottom-6 left-1/2 -translate-x-1/2 bg-natural-900 text-white px-6 py-3 rounded-2xl shadow-xl flex items-center gap-4 z-50"
+            >
+              <button
+                onClick={() => {
+                  const allIds = new Set(filteredPatients.map(p => p.id));
+                  const allSelected = filteredPatients.every(p => selectedIds.has(p.id));
+                  setSelectedIds(allSelected ? new Set() : allIds);
+                }}
+                className="text-sm font-bold text-natural-300 hover:text-white transition-colors"
+              >
+                {filteredPatients.every(p => selectedIds.has(p.id)) ? '取消全選' : '全選'}
+              </button>
+              <span className="text-natural-500">|</span>
+              <span className="text-sm text-natural-300">已選 <span className="text-white font-bold">{selectedIds.size}</span> 位</span>
+              <button
+                onClick={handleBatchDelete}
+                disabled={selectedIds.size === 0}
+                className="flex items-center gap-2 bg-terracotta-500 hover:bg-terracotta-600 disabled:opacity-40 disabled:cursor-not-allowed text-white px-4 py-1.5 rounded-lg text-sm font-bold transition-all"
+              >
+                <Trash2 className="w-4 h-4" />
+                刪除
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </main>
     </div>
   );
