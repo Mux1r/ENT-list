@@ -37,11 +37,10 @@ export default function ImportModal({ onImport, onCancel }: ImportModalProps) {
     admissionDate: row.admissionDate || row['入院日期'] || new Date().toISOString().split('T')[0],
     diagnosis: row.diagnosis || row.admissionDiagnosis || row['診斷'] || row['入院診斷'] || '',
     status: (['Stable', 'Critical', 'Discharge Pending'].includes(row.status) ? row.status : 'Stable') as Patient['status'],
-    medications: Array.isArray(row.medications) ? row.medications : [],
-    labTests: Array.isArray(row.labTests) ? row.labTests : [],
-    examinations: Array.isArray(row.examinations) ? row.examinations : [],
-    clinicalPearls: Array.isArray(row.clinicalPearls) ? row.clinicalPearls : [],
-    dailyChecks: Array.isArray(row.dailyChecks) ? row.dailyChecks.map((c: any) => ({ ...c, id: c.id || '' })) : [],
+    medications: Array.isArray(row.medications) ? row.medications.map((m: any) => ({ ...m, id: crypto.randomUUID() })) : [],
+    labTests: Array.isArray(row.labTests) ? row.labTests.map((l: any) => ({ ...l, id: crypto.randomUUID() })) : [],
+    examinations: Array.isArray(row.examinations) ? row.examinations.map((e: any) => ({ ...e, id: crypto.randomUUID() })) : [],
+    dailyChecks: Array.isArray(row.dailyChecks) ? row.dailyChecks.map((c: any) => ({ ...c, id: crypto.randomUUID() })) : [],
   });
 
   const processImportedData = (data: any[]) => {
@@ -62,7 +61,6 @@ export default function ImportModal({ onImport, onCancel }: ImportModalProps) {
           medications: [],
           labTests: [],
           examinations: [],
-          clinicalPearls: [],
           dailyChecks: [],
         }));
 

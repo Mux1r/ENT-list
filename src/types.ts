@@ -61,8 +61,7 @@ export interface Patient {
   medications: Medication[];
   labTests: LabTest[];
   examinations: Examination[];
-  clinicalPearls?: string[];
-  dailyChecks: ENTChecklist[];
+dailyChecks: ENTChecklist[];
   // kept optional for backward compat with existing Firestore docs
   admissionDiagnosis?: string;
   preliminaryDiagnosis?: string;

@@ -5,14 +5,12 @@ import {
   ClipboardList,
   FileText,
   Plus,
-  AlertCircle,
   Clock,
   Thermometer,
   CloudLightning,
   Droplets,
   Wind,
   Trash2,
-  RefreshCw,
   X,
   ChevronUp,
   ChevronDown,
@@ -34,7 +32,6 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Patient, ENTChecklist } from '../types';
 import DailyChecklistForm from './DailyChecklistForm';
 import { format } from 'date-fns';
-import { generateClinicalPearls } from '../services/geminiService';
 
 const JSON_IMPORT_PROMPT = `你是一個醫療資料結構化助手。病患的基本資料（姓名、床號、病歷號、年齡、性別、入院日期）已建立，請根據我提供的病患臨床資訊，產出以下 JSON 格式的資料。
 
@@ -150,8 +147,7 @@ export default function PatientDetails({ patient, onUpdate, onDelete }: PatientD
   const [activeTab, setActiveTab] = useState<'profile' | 'checklist'>('profile');
   const [showChecklistForm, setShowChecklistForm] = useState(false);
   const [currentCheckIndex, setCurrentCheckIndex] = useState(patient.dailyChecks.length > 0 ? patient.dailyChecks.length - 1 : 0);
-  const [isGeneratingPearls, setIsGeneratingPearls] = useState(false);
-  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [showJsonModal, setShowJsonModal] = useState(false);
   const [jsonText, setJsonText] = useState('');
   const [jsonError, setJsonError] = useState('');
@@ -303,7 +299,7 @@ export default function PatientDetails({ patient, onUpdate, onDelete }: PatientD
 
     const allowed = [
       'name', 'bedNumber', 'chartNumber', 'age', 'gender', 'admissionDate',
-      'diagnosis', 'status', 'clinicalPearls',
+      'diagnosis', 'status',
       'medications', 'labTests', 'examinations', 'dailyChecks',
     ] as const;
 
@@ -478,17 +474,6 @@ export default function PatientDetails({ patient, onUpdate, onDelete }: PatientD
   };
   // ───────────────────────────────────────────────────────────────
 
-  const handleRefreshPearls = async () => {
-    setIsGeneratingPearls(true);
-    try {
-      const pearls = await generateClinicalPearls(patient);
-      onUpdate({ ...patient, clinicalPearls: pearls });
-    } catch (error) {
-      console.error("Refresh pearls error:", error);
-    } finally {
-      setIsGeneratingPearls(false);
-    }
-  };
 
   return (
     <div className="space-y-4 text-natural-600">
@@ -919,58 +904,6 @@ export default function PatientDetails({ patient, onUpdate, onDelete }: PatientD
               </div>
             </div>
 
-            {/* Sidebar info */}
-            <div className="md:col-span-4 space-y-6">
-              <div className="bg-natural-600 rounded-2xl p-6 text-natural-100 shadow-lg relative overflow-hidden border border-natural-900">
-                <div className="absolute -bottom-4 -right-4 p-4 opacity-10">
-                  <AlertCircle className="w-32 h-32" />
-                </div>
-                <div className="flex items-center justify-between mb-4 border-b border-natural-500 pb-2">
-                  <h4 className="text-sage-100 text-[10px] font-bold uppercase tracking-wider">Clinical Pearls / Warnings</h4>
-                  <button 
-                    onClick={handleRefreshPearls}
-                    disabled={isGeneratingPearls}
-                    className="p-1 hover:bg-natural-500 rounded transition-colors text-sage-100 disabled:opacity-50"
-                    title="重新生成 AI 建議"
-                  >
-                    <RefreshCw className={`w-3 h-3 ${isGeneratingPearls ? 'animate-spin' : ''}`} />
-                  </button>
-                </div>
-                <ul className="space-y-4 text-xs font-medium">
-                  {patient.clinicalPearls && patient.clinicalPearls.length > 0 ? (
-                    patient.clinicalPearls.map((pearl, idx) => (
-                      <li key={idx} className="flex gap-3">
-                        <div className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${
-                          idx % 4 === 0 ? 'bg-terracotta-500' :
-                          idx % 4 === 1 ? 'bg-sage-500' :
-                          idx % 4 === 2 ? 'bg-clinical-500' : 'bg-clay-500'
-                        }`} />
-                        {pearl}
-                      </li>
-                    ))
-                  ) : (
-                    <>
-                      <li className="flex gap-3">
-                        <div className="w-1.5 h-1.5 rounded-full bg-terracotta-500 mt-1.5 shrink-0" />
-                        Monitor for neck hematoma / Bleeding
-                      </li>
-                      <li className="flex gap-3">
-                        <div className="w-1.5 h-1.5 rounded-full bg-sage-500 mt-1.5 shrink-0" />
-                        Assess for airway stridor
-                      </li>
-                      <li className="flex gap-3 flex-col">
-                        <button 
-                          onClick={handleRefreshPearls}
-                          className="mt-2 text-[10px] bg-natural-500/50 hover:bg-natural-500 py-1 px-2 rounded text-center transition-all border border-natural-400"
-                        >
-                          {isGeneratingPearls ? 'Generating...' : 'Click to generate AI insights'}
-                        </button>
-                      </li>
-                    </>
-                  )}
-                </ul>
-              </div>
-            </div>
           </div>
         ) : (
           <div className="space-y-4">

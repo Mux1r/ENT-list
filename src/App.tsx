@@ -56,6 +56,7 @@ export default function App() {
   const toggleSearch = () => { setShowSearch(s => { if (s) setSearchTerm(''); return !s; }); };
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [lastImportIds, setLastImportIds] = useState<string[] | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -121,7 +122,7 @@ export default function App() {
 
       const {
         name, bedNumber, age, gender, chartNumber,
-        admissionDate, diagnosis, status, dailyChecks, clinicalPearls,
+        admissionDate, diagnosis, status, dailyChecks,
         medications, labTests, examinations,
       } = updatedPatient;
 
@@ -133,7 +134,6 @@ export default function App() {
         name, bedNumber, age, gender, chartNumber,
         admissionDate, diagnosis, status,
         dailyChecks: clean(dailyChecks || []),
-        clinicalPearls: clean(clinicalPearls || []),
         medications: clean(medications || []),
         labTests: clean(labTests || []),
         examinations: clean(examinations || []),
@@ -218,8 +218,10 @@ export default function App() {
 
       const batch = writeBatch(db);
       const patientsRef = collection(db, 'patients');
+      const importedIds: string[] = [];
       for (const patient of toImport) {
         const newDocRef = doc(patientsRef);
+        importedIds.push(newDocRef.id);
         batch.set(newDocRef, {
           ...patient,
           id: newDocRef.id,
@@ -229,10 +231,24 @@ export default function App() {
         });
       }
       await batch.commit();
+      setLastImportIds(importedIds);
       setShowImportModal(false);
       alert(`成功匯入 ${toImport.length} 位病患${skipped > 0 ? `，略過 ${skipped} 位已存在病患` : ''}。`);
     } catch (error) {
       console.error("Error batch importing:", error);
+    }
+  };
+
+  const handleUndoImport = async () => {
+    if (!lastImportIds || lastImportIds.length === 0) return;
+    try {
+      const batch = writeBatch(db);
+      lastImportIds.forEach(id => batch.delete(doc(db, 'patients', id)));
+      await batch.commit();
+      setLastImportIds(null);
+    } catch (error) {
+      console.error("Error undoing import:", error);
+      alert('撤銷失敗，請稍後再試。');
     }
   };
 
@@ -378,11 +394,38 @@ export default function App() {
         )}
 
         {showImportModal && (
-          <ImportModal 
+          <ImportModal
             onImport={handleBatchImport}
             onCancel={() => setShowImportModal(false)}
           />
         )}
+
+        <AnimatePresence>
+          {lastImportIds && (
+            <motion.div
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -8 }}
+              className="mx-8 mt-4 flex items-center justify-between bg-sage-50 border border-sage-200 rounded-xl px-5 py-3 text-sm"
+            >
+              <span className="text-sage-800 font-medium">已匯入 {lastImportIds.length} 位病患</span>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleUndoImport}
+                  className="text-xs font-bold text-terracotta-600 hover:text-terracotta-800 transition-colors"
+                >
+                  撤銷匯入
+                </button>
+                <button
+                  onClick={() => setLastImportIds(null)}
+                  className="text-natural-400 hover:text-natural-600 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <div className="flex-1 overflow-auto p-8">
           <AnimatePresence mode="wait">
