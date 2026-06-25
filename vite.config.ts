@@ -23,8 +23,10 @@ export default defineConfig(({mode}) => {
           start_url: '/ENT-list/',
           scope: '/ENT-list/',
           icons: [
-            { src: '/ENT-list/icons/icon.svg', sizes: '192x192', type: 'image/svg+xml' },
-            { src: '/ENT-list/icons/icon.svg', sizes: '512x512', type: 'image/svg+xml', purpose: 'any maskable' },
+            { src: '/ENT-list/icons/pwa-64x64.png',              sizes: '64x64',   type: 'image/png' },
+            { src: '/ENT-list/icons/pwa-192x192.png',            sizes: '192x192', type: 'image/png' },
+            { src: '/ENT-list/icons/pwa-512x512.png',            sizes: '512x512', type: 'image/png' },
+            { src: '/ENT-list/icons/maskable-icon-512x512.png',  sizes: '512x512', type: 'image/png', purpose: 'maskable' },
           ],
         },
       }),
