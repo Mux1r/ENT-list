@@ -8,6 +8,7 @@ import {
   ClipboardList,
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
   Stethoscope,
   Menu,
   FileUp,
@@ -54,6 +55,8 @@ export default function App() {
   const [showPatientSwitcher, setShowPatientSwitcher] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const toggleSearch = () => { setShowSearch(s => { if (s) setSearchTerm(''); return !s; }); };
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const toggleExpand = (id: string) => setExpandedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [lastImportIds, setLastImportIds] = useState<string[] | null>(null);
@@ -445,29 +448,103 @@ export default function App() {
                 ) : (
                   filteredPatients.map(patient => {
                     const isSelected = selectedIds.has(patient.id);
+                    const isExpanded = expandedIds.has(patient.id);
+                    const statusDot: Record<string, string> = {
+                      Stable: 'bg-sage-400',
+                      Critical: 'bg-terracotta-500',
+                      'Discharge Pending': 'bg-clay-400',
+                      Discharged: 'bg-natural-300',
+                    };
+                    const abnormals = patient.labTests?.filter(l => l.isAbnormal) ?? [];
+                    const lastCheck = patient.dailyChecks?.length
+                      ? [...patient.dailyChecks].sort((a, b) => b.date.localeCompare(a.date))[0]
+                      : null;
                     return (
-                      <button
-                        key={patient.id}
-                        onClick={() => isEditMode ? toggleSelect(patient.id) : setSelectedPatientId(patient.id)}
-                        className={`group w-full flex items-center gap-4 px-6 py-4 text-left transition-colors border-b border-natural-50 last:border-b-0 ${
-                          isEditMode && isSelected ? 'bg-terracotta-50' : 'hover:bg-sage-50/50'
-                        }`}
-                      >
-                        {isEditMode && (
-                          <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${
-                            isSelected ? 'bg-terracotta-500 border-terracotta-500' : 'border-natural-300'
-                          }`}>
-                            {isSelected && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
-                          </div>
-                        )}
-                        <span className="text-[10px] font-bold text-sage-600 bg-sage-50 border border-sage-100 px-2 py-0.5 rounded uppercase tracking-wider w-16 shrink-0 text-center">
-                          {patient.bedNumber}
-                        </span>
-                        <span className="font-bold text-natural-900 w-24 shrink-0 truncate">{patient.name}</span>
-                        <span className="text-sm text-natural-400 w-10 shrink-0">{patient.age}y</span>
-                        <span className="text-sm text-natural-500 truncate flex-1">{patient.diagnosis}</span>
-                        {!isEditMode && <ChevronRight className="w-4 h-4 text-natural-200 group-hover:text-sage-400 shrink-0 transition-colors" />}
-                      </button>
+                      <div key={patient.id} className="border-b border-natural-50 last:border-b-0">
+                        <div
+                          onClick={isEditMode ? () => toggleSelect(patient.id) : undefined}
+                          className={`flex items-center gap-3 px-6 py-3 transition-colors ${
+                            isEditMode ? `cursor-pointer ${isSelected ? 'bg-terracotta-50' : 'hover:bg-natural-50'}` : ''
+                          }`}
+                        >
+                          {isEditMode && (
+                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${
+                              isSelected ? 'bg-terracotta-500 border-terracotta-500' : 'border-natural-300'
+                            }`}>
+                              {isSelected && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
+                            </div>
+                          )}
+                          <span className="text-[10px] font-bold text-sage-600 bg-sage-50 border border-sage-100 px-2 py-0.5 rounded uppercase tracking-wider w-16 shrink-0 text-center">
+                            {patient.bedNumber}
+                          </span>
+                          {/* Main info — navigate on click in normal mode */}
+                          <button
+                            disabled={isEditMode}
+                            onClick={() => setSelectedPatientId(patient.id)}
+                            className="flex-1 min-w-0 text-left group hover:bg-sage-50/50 -mx-1 px-1 rounded-lg transition-colors disabled:pointer-events-none"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-natural-900 truncate">{patient.name}</span>
+                              <span className="text-xs text-natural-400 shrink-0">
+                                {patient.age} {patient.gender === 'Female' ? 'F' : patient.gender === 'Other' ? 'O' : 'M'}
+                              </span>
+                              <span
+                                className={`w-2 h-2 rounded-full shrink-0 ${statusDot[patient.status] ?? 'bg-natural-300'}`}
+                                title={patient.status}
+                              />
+                              <ChevronRight className="w-3.5 h-3.5 text-natural-200 group-hover:text-sage-400 ml-auto shrink-0 transition-colors" />
+                            </div>
+                            <p className="text-xs text-natural-400 truncate mt-0.5">{patient.diagnosis || '—'}</p>
+                          </button>
+                          {/* Expand toggle */}
+                          {!isEditMode && (
+                            <button
+                              onClick={() => toggleExpand(patient.id)}
+                              className="shrink-0 p-1 text-natural-300 hover:text-natural-600 transition-colors"
+                            >
+                              <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`} />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Expanded summary */}
+                        <AnimatePresence>
+                          {isExpanded && !isEditMode && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.15 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="px-6 pb-3 pt-1 pl-[88px] flex flex-wrap gap-x-4 gap-y-1 text-xs text-natural-500 bg-natural-50/60">
+                                {(patient.medications?.length ?? 0) > 0 && (
+                                  <span className="flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-sage-400 shrink-0" />
+                                    {patient.medications.slice(0, 3).map(m => m.name).join(' · ')}
+                                    {patient.medications.length > 3 && ` +${patient.medications.length - 3}`}
+                                  </span>
+                                )}
+                                {abnormals.length > 0 && (
+                                  <span className="flex items-center gap-1.5 text-terracotta-500">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-terracotta-400 shrink-0" />
+                                    {abnormals.length} abnormal
+                                  </span>
+                                )}
+                                {lastCheck && (
+                                  <span className="flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-clay-400 shrink-0" />
+                                    {format(new Date(lastCheck.date), 'MM/dd')} · T {lastCheck.fever}°C
+                                  </span>
+                                )}
+                                {!patient.medications?.length && !patient.labTests?.length && !patient.dailyChecks?.length && (
+                                  <span className="text-natural-300 italic">無詳細資料</span>
+                                )}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
                     );
                   })
                 )}
