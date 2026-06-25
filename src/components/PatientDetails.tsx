@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+﻿import React, { useState, useRef, useEffect } from 'react';
 import {
   User,
   Activity,
@@ -114,8 +114,9 @@ const STATUS_OPTIONS = [
 ] as const;
 
 const GENDER_OPTIONS = [
-  { value: 'Male',   label: 'Male',   triggerClass: 'bg-natural-50 text-natural-700 border-natural-200', dotColor: 'bg-blue-400' },
-  { value: 'Female', label: 'Female', triggerClass: 'bg-natural-50 text-natural-700 border-natural-200', dotColor: 'bg-rose-400' },
+  { value: 'Male',   label: 'M', triggerClass: 'bg-natural-50 text-natural-700 border-natural-200', dotColor: 'bg-blue-400' },
+  { value: 'Female', label: 'F', triggerClass: 'bg-natural-50 text-natural-700 border-natural-200', dotColor: 'bg-rose-400' },
+  { value: 'Other',  label: 'O', triggerClass: 'bg-natural-50 text-natural-700 border-natural-200', dotColor: 'bg-natural-400' },
 ] as const;
 
 type ConflictItem = {
@@ -144,8 +145,9 @@ const normalizeNotes = (notes: ENTChecklist['notes'] | string | undefined): { te
 };
 
 export default function PatientDetails({ patient, onUpdate, onDelete }: PatientDetailsProps) {
-  const [activeTab, setActiveTab] = useState<'profile' | 'checklist'>('profile');
   const [showChecklistForm, setShowChecklistForm] = useState(false);
+  const [openSections, setOpenSections] = useState<Set<string>>(new Set());
+  const toggleSection = (key: string) => setOpenSections(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
   const [currentCheckIndex, setCurrentCheckIndex] = useState(patient.dailyChecks.length > 0 ? patient.dailyChecks.length - 1 : 0);
 const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [showJsonModal, setShowJsonModal] = useState(false);
@@ -166,10 +168,8 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   };
 
   useEffect(() => {
-    if (activeTab === 'checklist') {
-      setCurrentCheckIndex(patient.dailyChecks.length > 0 ? patient.dailyChecks.length - 1 : 0);
-    }
-  }, [activeTab]);
+    setCurrentCheckIndex(patient.dailyChecks.length > 0 ? patient.dailyChecks.length - 1 : 0);
+  }, [patient.id]);
 
   const handleNext = () => {
     if (currentCheckIndex < patient.dailyChecks.length - 1) {
@@ -365,8 +365,6 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
     applyMerged(resolved);
   };
 
-  // ── Clinical tabs ──────────────────────────────────────────────
-  const [clinicalTab, setClinicalTab] = useState<'med' | 'lab' | 'exam'>('med');
   const today = new Date().toISOString().split('T')[0];
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
 
@@ -478,242 +476,119 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   return (
     <div className="space-y-4 text-natural-600">
       {/* Patient Header Card */}
-      <div className="bg-white rounded-2xl px-5 py-4 border border-natural-200 shadow-sm flex items-center gap-5">
-
-        {/* Identity block */}
-        <div className="flex flex-col gap-2 min-w-0">
-          {/* Row 1: bed · name · status */}
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <input
-              value={localFields.bedNumber}
-              onChange={(e) => handleLocalChange('bedNumber', e.target.value)}
-              onBlur={() => syncField('bedNumber', localFields.bedNumber)}
-              className="px-2 py-0.5 rounded bg-sage-50 text-sage-600 border border-sage-100 text-xs font-bold uppercase tracking-wider focus:ring-1 focus:ring-sage-500 focus:outline-hidden [field-sizing:content] min-w-[32px]"
-            />
-            <input
-              value={localFields.name}
-              onChange={(e) => handleLocalChange('name', e.target.value)}
-              onBlur={() => syncField('name', localFields.name)}
-              placeholder="病患姓名"
-              className="text-lg font-bold text-natural-900 bg-transparent border-b border-transparent hover:border-natural-200 focus:border-sage-500 focus:outline-hidden [field-sizing:content] min-w-[80px]"
-            />
-            <DropdownSelect
-              value={patient.status}
-              onChange={(v) => syncField('status', v)}
-              options={STATUS_OPTIONS as unknown as { value: string; label: string; triggerClass: string; dotColor: string }[]}
-            />
-          </div>
-          {/* Row 2: chart · age/sex · adm */}
-          <div className="flex items-center gap-2.5 text-sm text-natural-400 flex-wrap">
-            <input
-              value={localFields.chartNumber}
-              onChange={(e) => handleLocalChange('chartNumber', e.target.value)}
-              onBlur={() => syncField('chartNumber', localFields.chartNumber)}
-              className="font-mono font-bold text-natural-600 bg-transparent border-b border-transparent hover:border-natural-200 focus:border-sage-500 focus:outline-hidden [field-sizing:content] min-w-[56px]"
-            />
-            <span className="text-natural-200">·</span>
-            <div className="flex items-center gap-1.5">
-              <input
-                type="number"
-                value={localFields.age}
-                onChange={(e) => handleLocalChange('age', e.target.value)}
-                onBlur={() => syncField('age', parseInt(localFields.age) || 0)}
-                className="w-8 font-bold text-natural-600 bg-transparent border-b border-transparent hover:border-natural-200 focus:border-sage-500 focus:outline-hidden"
-              />
-              <span className="text-natural-400">y/o</span>
-              <DropdownSelect
-                value={patient.gender}
-                onChange={(v) => syncField('gender', v)}
-                options={GENDER_OPTIONS as unknown as { value: string; label: string; triggerClass: string; dotColor: string }[]}
-              />
-            </div>
-            <span className="text-natural-200">·</span>
-            <input
-              type="date"
-              value={localFields.admissionDate}
-              onChange={(e) => handleLocalChange('admissionDate', e.target.value)}
-              onBlur={() => syncField('admissionDate', localFields.admissionDate)}
-              className="font-bold text-natural-600 bg-transparent border-b border-transparent hover:border-natural-200 focus:border-sage-500 focus:outline-hidden w-auto"
-            />
+      <div className="bg-white rounded-2xl px-5 py-4 border border-natural-200 shadow-sm space-y-2">
+        {/* Row 1: bed · name · age · gender · status dot · actions */}
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <input
+            value={localFields.bedNumber}
+            onChange={(e) => handleLocalChange('bedNumber', e.target.value)}
+            onBlur={() => syncField('bedNumber', localFields.bedNumber)}
+            className="px-2 py-0.5 rounded bg-sage-50 text-sage-600 border border-sage-100 text-xs font-bold uppercase tracking-wider focus:ring-1 focus:ring-sage-500 focus:outline-hidden [field-sizing:content] min-w-[32px]"
+          />
+          <input
+            value={localFields.name}
+            onChange={(e) => handleLocalChange('name', e.target.value)}
+            onBlur={() => syncField('name', localFields.name)}
+            placeholder="病患姓名"
+            className="text-lg font-bold text-natural-900 bg-transparent border-b border-transparent hover:border-natural-200 focus:border-sage-500 focus:outline-hidden [field-sizing:content] min-w-[80px]"
+          />
+          <input
+            type="number"
+            value={localFields.age}
+            onChange={(e) => handleLocalChange('age', e.target.value)}
+            onBlur={() => syncField('age', parseInt(localFields.age) || 0)}
+            className="w-8 text-sm font-bold text-natural-500 bg-transparent border-b border-transparent hover:border-natural-200 focus:border-sage-500 focus:outline-hidden"
+          />
+          <DropdownSelect
+            value={patient.gender}
+            onChange={(v) => syncField('gender', v)}
+            options={GENDER_OPTIONS as unknown as { value: string; label: string; triggerClass: string; dotColor: string }[]}
+          />
+          <DropdownSelect
+            value={patient.status}
+            onChange={(v) => syncField('status', v)}
+            options={STATUS_OPTIONS as unknown as { value: string; label: string; triggerClass: string; dotColor: string }[]}
+            compact
+          />
+          <div className="ml-auto flex gap-1">
+            <button
+              onClick={() => { setShowJsonModal(true); setJsonError(''); setJsonText(''); }}
+              className="p-1.5 text-natural-300 hover:text-sage-600 transition-colors"
+              title="貼上 JSON 更新病患資料"
+            >
+              <ClipboardPaste className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => {
+                if (window.confirm('Are you sure you want to delete this patient profile? This action cannot be undone.')) {
+                  onDelete(patient.id);
+                }
+              }}
+              className="p-1.5 text-natural-200 hover:text-terracotta-500 transition-colors"
+              title="Delete Patient"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
           </div>
         </div>
 
-        {/* Diagnosis — fills remaining space */}
-        <div className="flex-1 min-w-0 border-l border-natural-100 pl-5">
-          <span className="text-[10px] font-bold text-natural-300 uppercase tracking-widest block mb-1">Diagnosis</span>
-          <textarea
-            value={localFields.diagnosis}
-            onChange={(e) => handleLocalChange('diagnosis', e.target.value)}
-            onBlur={() => syncField('diagnosis', localFields.diagnosis)}
-            rows={2}
-            placeholder="入院診斷…"
-            className="w-full text-sm text-natural-700 bg-transparent resize-none focus:outline-hidden leading-relaxed placeholder-natural-200"
+        {/* Row 2: diagnosis */}
+        <textarea
+          value={localFields.diagnosis}
+          onChange={(e) => handleLocalChange('diagnosis', e.target.value)}
+          onBlur={() => syncField('diagnosis', localFields.diagnosis)}
+          rows={2}
+          placeholder="入院診斷…"
+          className="w-full text-sm text-natural-700 bg-transparent resize-none focus:outline-hidden leading-relaxed placeholder-natural-200"
+        />
+
+        {/* Row 3: meta */}
+        <div className="flex items-center gap-2 text-xs text-natural-400">
+          <input
+            value={localFields.chartNumber}
+            onChange={(e) => handleLocalChange('chartNumber', e.target.value)}
+            onBlur={() => syncField('chartNumber', localFields.chartNumber)}
+            className="font-mono font-bold text-natural-400 bg-transparent border-b border-transparent hover:border-natural-200 focus:border-sage-500 focus:outline-hidden [field-sizing:content] min-w-[56px]"
+          />
+          <span className="text-natural-200">·</span>
+          <input
+            type="date"
+            value={localFields.admissionDate}
+            onChange={(e) => handleLocalChange('admissionDate', e.target.value)}
+            onBlur={() => syncField('admissionDate', localFields.admissionDate)}
+            className="font-bold text-natural-400 bg-transparent border-b border-transparent hover:border-natural-200 focus:border-sage-500 focus:outline-hidden w-auto"
           />
         </div>
-
-        {/* Actions */}
-        <div className="flex flex-col gap-1 shrink-0">
-          <button
-            onClick={() => { setShowJsonModal(true); setJsonError(''); setJsonText(''); }}
-            className="p-1.5 text-natural-300 hover:text-sage-600 transition-colors"
-            title="貼上 JSON 更新病患資料"
-          >
-            <ClipboardPaste className="w-4 h-4" />
-          </button>
-          <button
-            onClick={() => {
-              if (window.confirm('Are you sure you want to delete this patient profile? This action cannot be undone.')) {
-                onDelete(patient.id);
-              }
-            }}
-            className="p-1.5 text-natural-200 hover:text-terracotta-500 transition-colors"
-            title="Delete Patient"
-          >
-            <Trash2 className="w-4 h-4" />
-          </button>
-        </div>
       </div>
 
-      {/* Tabs + Date Nav + Add */}
-      <div className="flex items-center gap-2">
-        {/* Tab pills */}
-        <div className="flex gap-1 p-1 bg-natural-100 rounded-xl border border-natural-200 shrink-0">
-          <button
-            onClick={() => setActiveTab('profile')}
-            className={`flex items-center gap-2 px-5 py-2 rounded-lg text-xs font-bold transition-all uppercase tracking-widest ${
-              activeTab === 'profile'
-                ? 'bg-white text-sage-600 shadow-sm border border-natural-200'
-                : 'text-natural-400 hover:text-natural-600'
-            }`}
-          >
-            <FileText className="w-3.5 h-3.5" />
-            Clinical Info
-          </button>
-          <button
-            onClick={() => setActiveTab('checklist')}
-            className={`flex items-center gap-2 px-5 py-2 rounded-lg text-xs font-bold transition-all uppercase tracking-widest ${
-              activeTab === 'checklist'
-                ? 'bg-white text-sage-600 shadow-sm border border-natural-200'
-                : 'text-natural-400 hover:text-natural-600'
-            }`}
-          >
-            <ClipboardList className="w-3.5 h-3.5" />
-            Daily Rounds
-          </button>
-        </div>
+      {/* ═══ Collapsible sections ═══ */}
+      <div className="space-y-3">
 
-        {/* Date navigator — middle */}
-        {activeTab === 'checklist' && patient.dailyChecks.length > 0 && (() => {
-          const check = patient.dailyChecks[currentCheckIndex];
-          if (!check) return null;
-          return (
-            <div className="flex-1 flex items-center justify-center gap-1 relative">
-              <AnimatePresence>
-                {isDatePickerOpen && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 8, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 8, scale: 0.95 }}
-                    transition={{ duration: 0.12 }}
-                    className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-48 bg-white rounded-xl shadow-2xl border border-natural-200 z-[100] py-2 max-h-64 overflow-y-auto no-scrollbar"
-                  >
-                    <div className="px-3 py-1 mb-1 border-b border-natural-100">
-                      <p className="text-[9px] font-bold text-natural-400 uppercase tracking-widest">Select Date</p>
-                    </div>
-                    {[...patient.dailyChecks].reverse().map((dropCheck) => {
-                      const originalIndex = patient.dailyChecks.findIndex(dc => dc.id === dropCheck.id);
-                      return (
-                        <div
-                          key={dropCheck.id}
-                          onClick={(e) => { e.stopPropagation(); updateSelectedDate(originalIndex); setIsDatePickerOpen(false); }}
-                          className={`px-3 py-2 text-left hover:bg-sage-50 transition-colors cursor-pointer flex justify-between items-center ${
-                            originalIndex === currentCheckIndex ? 'bg-sage-50 text-sage-600' : 'text-natural-600'
-                          }`}
-                        >
-                          <div className="flex flex-col">
-                            <span className="text-xs font-bold leading-none">{format(new Date(dropCheck.date), 'MMM dd, yyyy')}</span>
-                            <span className="text-[10px] opacity-60">{format(new Date(dropCheck.date), 'HH:mm (EEE)')}</span>
-                          </div>
-                          {originalIndex === currentCheckIndex && <Clock className="w-3 h-3 text-sage-500" />}
-                        </div>
-                      );
-                    })}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-              <button onClick={handleGoToLatest} className="px-2 py-1.5 text-[10px] font-bold text-natural-400 hover:text-sage-600 uppercase tracking-wider transition-colors">Today</button>
-              <button onClick={handlePrev} disabled={currentCheckIndex <= 0} className="p-1.5 rounded-lg hover:bg-natural-100 text-natural-400 hover:text-natural-700 disabled:opacity-30 disabled:pointer-events-none transition-all">
-                <ChevronLeft className="w-3.5 h-3.5" />
+        {/* ── 用藥 ── */}
+        <div className="bg-white rounded-2xl border border-natural-200 shadow-sm overflow-hidden">
+          <div className="flex items-center">
+            <button onClick={() => toggleSection('med')} className="flex-1 flex items-center gap-2.5 px-5 py-3.5 text-left hover:bg-natural-50 transition-colors">
+              <Pill className="w-3.5 h-3.5 text-sage-500" />
+              <span className="text-xs font-bold text-natural-600 uppercase tracking-widest">用藥</span>
+              {(() => { const n = (patient.medications || []).filter(m => !m.endDate).length; return n > 0 ? <span className="text-[10px] bg-natural-100 text-natural-400 px-1.5 py-0.5 rounded-full font-bold">{n}</span> : null; })()}
+              <ChevronDown className={`w-3.5 h-3.5 text-natural-300 ml-auto transition-transform duration-200 ${openSections.has('med') ? 'rotate-180' : ''}`} />
+            </button>
+            {openSections.has('med') && (
+              <button onClick={openAddMed} className="px-4 py-3.5 text-xs font-bold text-sage-600 hover:bg-sage-50 transition-colors border-l border-natural-100 shrink-0 flex items-center gap-1">
+                <Plus className="w-3.5 h-3.5" /> 新增
               </button>
-              <button
-                onClick={() => setIsDatePickerOpen(!isDatePickerOpen)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-natural-100 hover:bg-natural-200 transition-colors text-xs font-bold text-natural-700"
-              >
-                {format(new Date(check.date), 'MMM dd, EEE')}
-                <ChevronDown className={`w-3 h-3 transition-transform ${isDatePickerOpen ? 'rotate-180' : ''}`} />
-              </button>
-              <button onClick={handleNext} disabled={currentCheckIndex >= patient.dailyChecks.length - 1} className="p-1.5 rounded-lg hover:bg-natural-100 text-natural-400 hover:text-natural-700 disabled:opacity-30 disabled:pointer-events-none transition-all">
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            </div>
-          );
-        })()}
-
-        {/* Add button */}
-        {activeTab === 'checklist' && (
-          <button
-            onClick={() => setShowChecklistForm(true)}
-            className="shrink-0 w-8 h-8 flex items-center justify-center bg-sage-500 text-white rounded-lg hover:bg-sage-600 transition-all shadow-sm border border-sage-600"
-            title="Add New Record"
-          >
-            <Plus className="w-4 h-4" />
-          </button>
-        )}
-      </div>
-
-      {/* Content Area */}
-      <div className="bg-transparent">
-        {activeTab === 'profile' ? (
-          <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
-            <div className="md:col-span-8 space-y-4">
-
-              {/* Clinical tabs: 用藥 | 檢驗 | 檢查 */}
-              <div className="bg-white rounded-2xl border border-natural-200 shadow-sm overflow-hidden">
-                {/* Tab bar */}
-                <div className="flex border-b border-natural-100">
-                  {([
-                    { key: 'med', label: '用藥', icon: <Pill className="w-3.5 h-3.5" /> },
-                    { key: 'lab', label: '檢驗', icon: <FlaskConical className="w-3.5 h-3.5" /> },
-                    { key: 'exam', label: '檢查', icon: <Scan className="w-3.5 h-3.5" /> },
-                  ] as const).map(t => (
-                    <button
-                      key={t.key}
-                      onClick={() => setClinicalTab(t.key)}
-                      className={`flex items-center gap-1.5 px-5 py-3 text-xs font-bold transition-all border-b-2 ${
-                        clinicalTab === t.key
-                          ? 'border-sage-500 text-sage-600 bg-sage-50/50'
-                          : 'border-transparent text-natural-400 hover:text-natural-600'
-                      }`}
-                    >
-                      {t.icon}{t.label}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="p-5">
-                  {/* ── 用藥 tab ── */}
-                  {clinicalTab === 'med' && (() => {
+            )}
+          </div>
+          <AnimatePresence>
+            {openSections.has('med') && (
+              <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} transition={{ duration: 0.18 }} className="overflow-hidden">
+                <div className="px-5 pb-4 pt-3 border-t border-natural-50">
+                  {(() => {
                     const meds = patient.medications || [];
                     const active = meds.filter(m => !m.endDate);
                     const stopped = meds.filter(m => m.endDate);
                     return (
                       <div className="space-y-3">
-                        <div className="flex justify-between items-center">
-                          <span className="text-[10px] font-bold text-natural-400 uppercase tracking-widest">目前用藥 ({active.length})</span>
-                          <button onClick={openAddMed} className="flex items-center gap-1 text-xs font-bold text-sage-600 hover:text-sage-700 transition-colors">
-                            <Plus className="w-3.5 h-3.5" /> 新增用藥
-                          </button>
-                        </div>
                         {active.length === 0 && <p className="text-xs text-natural-300 italic py-2">尚無用藥紀錄</p>}
                         {active.map(med => (
                           <div key={med.id} className="flex items-center gap-3 p-3 bg-natural-50 rounded-xl border border-natural-100">
@@ -753,30 +628,47 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
                       </div>
                     );
                   })()}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
 
-                  {/* ── 檢驗 tab ── */}
-                  {clinicalTab === 'lab' && (() => {
+        {/* ── 檢驗 ── */}
+        <div className="bg-white rounded-2xl border border-natural-200 shadow-sm overflow-hidden">
+          <div className="flex items-center">
+            <button onClick={() => toggleSection('lab')} className="flex-1 flex items-center gap-2.5 px-5 py-3.5 text-left hover:bg-natural-50 transition-colors">
+              <FlaskConical className="w-3.5 h-3.5 text-clinical-500" />
+              <span className="text-xs font-bold text-natural-600 uppercase tracking-widest">檢驗</span>
+              {(() => { const n = (patient.labTests || []).filter(l => l.isAbnormal).length; return n > 0 ? <span className="text-[10px] bg-terracotta-50 text-terracotta-500 px-1.5 py-0.5 rounded-full font-bold">⚠ {n}</span> : null; })()}
+              <ChevronDown className={`w-3.5 h-3.5 text-natural-300 ml-auto transition-transform duration-200 ${openSections.has('lab') ? 'rotate-180' : ''}`} />
+            </button>
+            {openSections.has('lab') && (
+              <button onClick={openAddLab} className="px-4 py-3.5 text-xs font-bold text-sage-600 hover:bg-sage-50 transition-colors border-l border-natural-100 shrink-0 flex items-center gap-1">
+                <Plus className="w-3.5 h-3.5" /> 新增
+              </button>
+            )}
+          </div>
+          <AnimatePresence>
+            {openSections.has('lab') && (
+              <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} transition={{ duration: 0.18 }} className="overflow-hidden">
+                <div className="px-5 pb-4 pt-3 border-t border-natural-50">
+                  {(() => {
                     const labs = patient.labTests || [];
                     const pending = labs.filter(l => l.status === 'pending');
                     const displayed = showPendingOnly ? pending : labs;
                     return (
                       <div className="space-y-3">
-                        <div className="flex justify-between items-center">
+                        {pending.length > 0 && (
                           <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-bold text-natural-400 uppercase tracking-widest">檢驗結果</span>
-                            {pending.length > 0 && (
-                              <button
-                                onClick={() => setShowPendingOnly(p => !p)}
-                                className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-all ${showPendingOnly ? 'bg-amber-500 text-white' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'}`}
-                              >
-                                <Clock className="w-3 h-3" /> 待報告 {pending.length}
-                              </button>
-                            )}
+                            <button
+                              onClick={() => setShowPendingOnly(p => !p)}
+                              className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-all ${showPendingOnly ? 'bg-amber-500 text-white' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'}`}
+                            >
+                              <Clock className="w-3 h-3" /> 待報告 {pending.length}
+                            </button>
                           </div>
-                          <button onClick={openAddLab} className="flex items-center gap-1 text-xs font-bold text-sage-600 hover:text-sage-700 transition-colors">
-                            <Plus className="w-3.5 h-3.5" /> 新增檢驗
-                          </button>
-                        </div>
+                        )}
                         {displayed.length === 0 && <p className="text-xs text-natural-300 italic py-2">{showPendingOnly ? '無待報告項目' : '尚無檢驗紀錄'}</p>}
                         {displayed.length > 0 && (() => {
                           const grouped = LAB_CATEGORIES
@@ -864,18 +756,35 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
                       </div>
                     );
                   })()}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
 
-                  {/* ── 檢查 tab ── */}
-                  {clinicalTab === 'exam' && (() => {
+        {/* ── 檢查 ── */}
+        <div className="bg-white rounded-2xl border border-natural-200 shadow-sm overflow-hidden">
+          <div className="flex items-center">
+            <button onClick={() => toggleSection('exam')} className="flex-1 flex items-center gap-2.5 px-5 py-3.5 text-left hover:bg-natural-50 transition-colors">
+              <Scan className="w-3.5 h-3.5 text-natural-400" />
+              <span className="text-xs font-bold text-natural-600 uppercase tracking-widest">檢查</span>
+              {(() => { const n = (patient.examinations || []).filter(e => e.status === 'pending').length; return n > 0 ? <span className="text-[10px] bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded-full font-bold">待 {n}</span> : null; })()}
+              <ChevronDown className={`w-3.5 h-3.5 text-natural-300 ml-auto transition-transform duration-200 ${openSections.has('exam') ? 'rotate-180' : ''}`} />
+            </button>
+            {openSections.has('exam') && (
+              <button onClick={openAddExam} className="px-4 py-3.5 text-xs font-bold text-sage-600 hover:bg-sage-50 transition-colors border-l border-natural-100 shrink-0 flex items-center gap-1">
+                <Plus className="w-3.5 h-3.5" /> 新增
+              </button>
+            )}
+          </div>
+          <AnimatePresence>
+            {openSections.has('exam') && (
+              <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} transition={{ duration: 0.18 }} className="overflow-hidden">
+                <div className="px-5 pb-4 pt-3 border-t border-natural-50">
+                  {(() => {
                     const exams = patient.examinations || [];
                     return (
                       <div className="space-y-3">
-                        <div className="flex justify-between items-center">
-                          <span className="text-[10px] font-bold text-natural-400 uppercase tracking-widest">影像 / 病理檢查</span>
-                          <button onClick={openAddExam} className="flex items-center gap-1 text-xs font-bold text-sage-600 hover:text-sage-700 transition-colors">
-                            <Plus className="w-3.5 h-3.5" /> 新增檢查
-                          </button>
-                        </div>
                         {exams.length === 0 && <p className="text-xs text-natural-300 italic py-2">尚無檢查紀錄</p>}
                         {exams.map(exam => (
                           <div key={exam.id} className="p-3 bg-natural-50 rounded-xl border border-natural-100">
@@ -901,206 +810,282 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
                     );
                   })()}
                 </div>
-              </div>
-            </div>
-
-          </div>
-        ) : (
-          <div className="space-y-4">
-
-            {showChecklistForm && (
-              <DailyChecklistForm onCancel={() => setShowChecklistForm(false)} onSubmit={handleAddCheck} />
+              </motion.div>
             )}
+          </AnimatePresence>
+        </div>
 
-            <div className="flex flex-col gap-6 text-natural-600">
-              {patient.dailyChecks.length === 0 ? (
-                <div className="bg-white rounded-2xl py-16 text-center border-2 border-dashed border-natural-200">
-                  <ClipboardList className="w-12 h-12 text-natural-200 mx-auto mb-4" />
-                  <p className="text-natural-400 font-bold uppercase tracking-widest text-xs">No records found</p>
-                </div>
-              ) : (
-                <>
-                  {/* Carousel Content */}
-                  <div className="relative group/carousel">
-                    <AnimatePresence mode="wait">
-                      {patient.dailyChecks[currentCheckIndex] ? (
-                        <motion.div
-                          key={patient.dailyChecks[currentCheckIndex].id}
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          exit={{ opacity: 0 }}
-                          transition={{ duration: 0 }}
-                          className="bg-white rounded-3xl border border-natural-200 shadow-xl flex flex-col"
-                        >
-                          {(() => {
-                            const check = patient.dailyChecks[currentCheckIndex];
-                            if (!check) return null;
-                            return (
-                              <>
-                                <div className="p-6 md:p-8 flex flex-col gap-6 relative group/content">
-                                <button 
-                                  onClick={() => {
-                                    if (window.confirm('Are you sure you want to delete this daily ward round record?')) {
-                                      const newChecks = patient.dailyChecks.filter(c => c.id !== check.id);
-                                      onUpdate({
-                                        ...patient,
-                                        dailyChecks: newChecks
-                                      });
-                                      if (currentCheckIndex >= newChecks.length) {
-                                        setCurrentCheckIndex(Math.max(0, newChecks.length - 1));
-                                      }
-                                    }
-                                  }}
-                                  className="absolute top-4 right-4 p-2 text-natural-300 hover:text-terracotta-500 transition-colors opacity-0 group-hover/content:opacity-100 bg-white border border-natural-100 rounded-full shadow-sm hover:shadow-md z-10"
+        {/* ── Daily Rounds ── */}
+        <div className="bg-white rounded-2xl border border-natural-200 shadow-sm overflow-hidden">
+          <div className="flex items-center">
+            <button onClick={() => toggleSection('rounds')} className="flex-1 flex items-center gap-2.5 px-5 py-3.5 text-left hover:bg-natural-50 transition-colors">
+              <ClipboardList className="w-3.5 h-3.5 text-sage-500" />
+              <span className="text-xs font-bold text-natural-600 uppercase tracking-widest">Daily Rounds</span>
+              {(patient.dailyChecks?.length ?? 0) > 0 && (
+                <span className="text-[10px] bg-natural-100 text-natural-400 px-1.5 py-0.5 rounded-full font-bold">{patient.dailyChecks.length}</span>
+              )}
+              <ChevronDown className={`w-3.5 h-3.5 text-natural-300 ml-auto transition-transform duration-200 ${openSections.has('rounds') ? 'rotate-180' : ''}`} />
+            </button>
+            {openSections.has('rounds') && (
+              <button onClick={() => setShowChecklistForm(true)} className="px-4 py-3.5 text-xs font-bold text-sage-600 hover:bg-sage-50 transition-colors border-l border-natural-100 shrink-0 flex items-center gap-1">
+                <Plus className="w-3.5 h-3.5" /> 新增
+              </button>
+            )}
+          </div>
+          <AnimatePresence>
+            {openSections.has('rounds') && (
+              <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} transition={{ duration: 0.18 }} className="overflow-hidden">
+                <div className="px-5 pb-5 pt-3 border-t border-natural-50 space-y-4">
+                  {showChecklistForm && (
+                    <DailyChecklistForm onCancel={() => setShowChecklistForm(false)} onSubmit={handleAddCheck} />
+                  )}
+                  {patient.dailyChecks.length === 0 ? (
+                    <div className="py-10 text-center border-2 border-dashed border-natural-200 rounded-2xl">
+                      <ClipboardList className="w-10 h-10 text-natural-200 mx-auto mb-3" />
+                      <p className="text-natural-400 font-bold uppercase tracking-widest text-xs">No records found</p>
+                    </div>
+                  ) : (
+                    <>
+                      {/* Date navigator */}
+                      {(() => {
+                        const check = patient.dailyChecks[currentCheckIndex];
+                        if (!check) return null;
+                        return (
+                          <div className="flex items-center justify-center gap-1 relative">
+                            <AnimatePresence>
+                              {isDatePickerOpen && (
+                                <motion.div
+                                  initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                                  exit={{ opacity: 0, y: 8, scale: 0.95 }}
+                                  transition={{ duration: 0.12 }}
+                                  className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-48 bg-white rounded-xl shadow-2xl border border-natural-200 z-[100] py-2 max-h-64 overflow-y-auto no-scrollbar"
                                 >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-
-                              <div className="grid grid-cols-4 gap-2">
-                                {([
-                                  {
-                                    key: 'bleeding', label: 'Bleeding', iconBg: 'bg-red-50',
-                                    icon: <Droplets className="w-3.5 h-3.5 text-red-400" />,
-                                    el: <select value={check.bleeding} onChange={e => handleCheckFieldUpdate(check.id, 'bleeding', e.target.value)} className={`bg-transparent text-xs font-bold focus:outline-hidden cursor-pointer ${check.bleeding !== 'None' ? 'text-red-600' : 'text-natural-800'}`}>{['None','Minor','Significant'].map(o=><option key={o}>{o}</option>)}</select>,
-                                  },
-                                  {
-                                    key: 'airway', label: 'Airway', iconBg: 'bg-sky-50',
-                                    icon: <Wind className="w-3.5 h-3.5 text-sky-400" />,
-                                    el: <select value={check.airway} onChange={e => handleCheckFieldUpdate(check.id, 'airway', e.target.value)} className={`bg-transparent text-xs font-bold focus:outline-hidden cursor-pointer ${check.airway !== 'Clear' ? 'text-red-600' : 'text-natural-800'}`}>{['Clear','Stridor','Obstructed'].map(o=><option key={o}>{o}</option>)}</select>,
-                                  },
-                                  {
-                                    key: 'temp', label: 'Temp', iconBg: 'bg-orange-50',
-                                    icon: <Thermometer className="w-3.5 h-3.5 text-orange-400" />,
-                                    el: <span className="flex items-baseline gap-0.5"><input type="number" value={check.fever} step={0.1} onChange={e => handleCheckFieldUpdate(check.id, 'fever', parseFloat(e.target.value)||0)} className={`w-12 bg-transparent text-xs font-bold focus:outline-hidden ${check.fever > 38 ? 'text-orange-600' : 'text-natural-800'}`} /><span className="text-[9px] text-natural-400">°C</span></span>,
-                                  },
-                                  {
-                                    key: 'drain', label: 'Drain', iconBg: 'bg-blue-50',
-                                    icon: <Droplets className="w-3.5 h-3.5 text-blue-400" />,
-                                    el: <span className="flex items-baseline gap-0.5"><input type="number" value={check.drainAmount} onChange={e => handleCheckFieldUpdate(check.id, 'drainAmount', parseInt(e.target.value)||0)} className="w-12 bg-transparent text-xs font-bold text-natural-800 focus:outline-hidden" /><span className="text-[9px] text-natural-400">cc</span></span>,
-                                  },
-                                  {
-                                    key: 'swallow', label: 'Swallow', iconBg: 'bg-emerald-50',
-                                    icon: <Activity className="w-3.5 h-3.5 text-emerald-500" />,
-                                    el: <select value={check.swallowing} onChange={e => handleCheckFieldUpdate(check.id, 'swallowing', e.target.value)} className={`bg-transparent text-xs font-bold focus:outline-hidden cursor-pointer ${check.swallowing !== 'Normal' ? 'text-red-600' : 'text-natural-800'}`}>{['Normal','Dysphagia','NPO'].map(o=><option key={o}>{o}</option>)}</select>,
-                                  },
-                                  {
-                                    key: 'cnnvii', label: 'CN VII', iconBg: 'bg-violet-50',
-                                    icon: <User className="w-3.5 h-3.5 text-violet-400" />,
-                                    el: <select value={check.facialNerve} onChange={e => handleCheckFieldUpdate(check.id, 'facialNerve', e.target.value)} className={`bg-transparent text-xs font-bold focus:outline-hidden cursor-pointer ${check.facialNerve !== 'Intact' ? 'text-red-600' : 'text-natural-800'}`}>{['Intact','Paresis','Paralysis'].map(o=><option key={o}>{o}</option>)}</select>,
-                                  },
-                                  {
-                                    key: 'pain', label: 'Pain', iconBg: 'bg-rose-50',
-                                    icon: <CloudLightning className="w-3.5 h-3.5 text-rose-400" />,
-                                    el: <span className="flex items-baseline gap-0.5"><input type="number" value={check.painLevel} min={0} max={10} onChange={e => handleCheckFieldUpdate(check.id, 'painLevel', parseInt(e.target.value)||0)} className={`w-8 bg-transparent text-xs font-bold focus:outline-hidden ${check.painLevel > 6 ? 'text-rose-600' : 'text-natural-800'}`} /><span className="text-[9px] text-natural-400">/10</span></span>,
-                                  },
-                                  {
-                                    key: 'hoarse', label: 'Hoarse', iconBg: 'bg-amber-50',
-                                    icon: <Volume2 className="w-3.5 h-3.5 text-amber-400" />,
-                                    el: <select value={check.hoarseness ? 'Yes' : 'No'} onChange={e => handleCheckFieldUpdate(check.id, 'hoarseness', e.target.value === 'Yes')} className={`bg-transparent text-xs font-bold focus:outline-hidden cursor-pointer ${check.hoarseness ? 'text-amber-600' : 'text-natural-800'}`}>{['No','Yes'].map(o=><option key={o}>{o}</option>)}</select>,
-                                  },
-                                ] as {key:string, label:string, iconBg:string, icon:React.ReactNode, el:React.ReactNode}[]).map(({key, label, iconBg, icon, el}) => (
-                                  <div key={key} className="flex items-center gap-2 p-2.5 rounded-xl bg-white border border-natural-100 shadow-xs">
-                                    <div className={`w-7 h-7 rounded-lg ${iconBg} flex items-center justify-center shrink-0`}>
-                                      {icon}
-                                    </div>
-                                    <div className="flex flex-col min-w-0">
-                                      <span className="text-[9px] font-bold text-natural-400 uppercase tracking-wider leading-none mb-0.5">{label}</span>
-                                      {el}
-                                    </div>
+                                  <div className="px-3 py-1 mb-1 border-b border-natural-100">
+                                    <p className="text-[9px] font-bold text-natural-400 uppercase tracking-widest">Select Date</p>
                                   </div>
-                                ))}
-                              </div>
-
-                              <div className="flex-1 shrink-0 pt-6 lg:pt-0 lg:pl-8 lg:border-l border-natural-100 max-w-md">
-                                <div className="flex justify-between items-center mb-3">
-                                  <p className="text-[10px] font-bold text-natural-400 uppercase tracking-widest">Rounding Checklist</p>
-                                  <button 
-                                    onClick={() => {
-                                      const notesArray = normalizeNotes(check.notes);
-                                      handleCheckFieldUpdate(check.id, 'notes', [...notesArray, { text: '', completed: false }]);
-                                    }}
-                                    className="p-1 text-sage-500 hover:bg-sage-50 rounded transition-all"
-                                  >
-                                    <Plus className="w-3 h-3" />
-                                  </button>
-                                </div>
-                                <ul className="space-y-2">
-                                  {(normalizeNotes(check.notes)).map((noteRaw, idx) => {
-                                    const note = typeof noteRaw === 'string' ? { text: noteRaw, completed: false } : noteRaw;
+                                  {[...patient.dailyChecks].reverse().map((dropCheck) => {
+                                    const originalIndex = patient.dailyChecks.findIndex(dc => dc.id === dropCheck.id);
                                     return (
-                                      <li 
-                                        key={idx} 
-                                        className={`flex gap-2 items-start group/item transition-all ${
-                                          note.completed ? 'opacity-40' : 'opacity-100'
+                                      <div
+                                        key={dropCheck.id}
+                                        onClick={(e) => { e.stopPropagation(); updateSelectedDate(originalIndex); setIsDatePickerOpen(false); }}
+                                        className={`px-3 py-2 text-left hover:bg-sage-50 transition-colors cursor-pointer flex justify-between items-center ${
+                                          originalIndex === currentCheckIndex ? 'bg-sage-50 text-sage-600' : 'text-natural-600'
                                         }`}
                                       >
-                                        <div className="flex flex-col gap-0 opacity-0 group-hover/item:opacity-100 transition-opacity shrink-0">
-                                          <button 
-                                            onClick={(e) => { e.stopPropagation(); handleMoveNote(check.id, idx, 'up'); }}
-                                            disabled={idx === 0}
-                                            className="p-0.5 hover:bg-natural-100 rounded disabled:opacity-0 text-natural-400 hover:text-sage-600"
-                                          >
-                                            <ChevronUp className="w-3 h-3" />
-                                          </button>
-                                          <button 
-                                            onClick={(e) => { e.stopPropagation(); handleMoveNote(check.id, idx, 'down'); }}
-                                            disabled={idx === check.notes.length - 1}
-                                            className="p-0.5 hover:bg-natural-100 rounded disabled:opacity-0 text-natural-400 hover:text-sage-600"
-                                          >
-                                            <ChevronDown className="w-3 h-3" />
-                                          </button>
+                                        <div className="flex flex-col">
+                                          <span className="text-xs font-bold leading-none">{format(new Date(dropCheck.date), 'MMM dd, yyyy')}</span>
+                                          <span className="text-[10px] opacity-60">{format(new Date(dropCheck.date), 'HH:mm (EEE)')}</span>
                                         </div>
-
-                                        <div 
-                                          onClick={() => handleToggleNoteCompletion(check.id, idx)}
-                                          className={`w-4 h-4 rounded border flex items-center justify-center transition-all mt-1 shrink-0 cursor-pointer ${
-                                            note.completed ? 'bg-sage-400 border-sage-500' : 'bg-white border-natural-200 group-hover/item:border-sage-400'
-                                          }`}
-                                        >
-                                          {note.completed && <X className="w-3 h-3 text-white" />}
-                                        </div>
-                                        
-                                        <div className="flex-1 min-w-0">
-                                          <input 
-                                            value={note.text}
-                                            onChange={(e) => handleUpdateNoteText(check.id, idx, e.target.value)}
-                                            className={`w-full bg-transparent text-sm font-medium leading-tight focus:outline-hidden border-b border-transparent hover:border-natural-100 focus:border-sage-400 ${
-                                              note.completed ? 'line-through text-natural-400' : 'text-natural-900 italic'
-                                            }`}
-                                          />
-                                        </div>
-
-                                        <button 
-                                          onClick={() => {
-                                            const notesArray = normalizeNotes(check.notes);
-                                            handleCheckFieldUpdate(check.id, 'notes', notesArray.filter((_, i) => i !== idx));
-                                          }}
-                                          className="opacity-0 group-hover/item:opacity-100 p-1 text-natural-300 hover:text-terracotta-500 transition-all shrink-0"
-                                        >
-                                          <Trash2 className="w-3 h-3" />
-                                        </button>
-                                      </li>
+                                        {originalIndex === currentCheckIndex && <Clock className="w-3 h-3 text-sage-500" />}
+                                      </div>
                                     );
                                   })}
-                                </ul>
-                              </div>
-                            </div>
-                          </>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                            <button onClick={handleGoToLatest} className="px-2 py-1.5 text-[10px] font-bold text-natural-400 hover:text-sage-600 uppercase tracking-wider transition-colors">Today</button>
+                            <button onClick={handlePrev} disabled={currentCheckIndex <= 0} className="p-1.5 rounded-lg hover:bg-natural-100 text-natural-400 hover:text-natural-700 disabled:opacity-30 disabled:pointer-events-none transition-all">
+                              <ChevronLeft className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => setIsDatePickerOpen(!isDatePickerOpen)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-natural-100 hover:bg-natural-200 transition-colors text-xs font-bold text-natural-700"
+                            >
+                              {format(new Date(check.date), 'MMM dd, EEE')}
+                              <ChevronDown className={`w-3 h-3 transition-transform ${isDatePickerOpen ? 'rotate-180' : ''}`} />
+                            </button>
+                            <button onClick={handleNext} disabled={currentCheckIndex >= patient.dailyChecks.length - 1} className="p-1.5 rounded-lg hover:bg-natural-100 text-natural-400 hover:text-natural-700 disabled:opacity-30 disabled:pointer-events-none transition-all">
+                              <ChevronRight className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         );
                       })()}
-                    </motion.div>
-                      ) : (
-                        <div className="bg-white rounded-3xl border border-natural-200 shadow-xl p-12 text-center text-natural-400">
-                          No records found for this patient.
-                        </div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        )}
+                      {/* Carousel */}
+                      <div className="relative group/carousel">
+                        <AnimatePresence mode="wait">
+                          {patient.dailyChecks[currentCheckIndex] ? (
+                            <motion.div
+                              key={patient.dailyChecks[currentCheckIndex].id}
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              exit={{ opacity: 0 }}
+                              transition={{ duration: 0 }}
+                              className="bg-white rounded-3xl border border-natural-200 shadow-xl flex flex-col"
+                            >
+                              {(() => {
+                                const check = patient.dailyChecks[currentCheckIndex];
+                                if (!check) return null;
+                                return (
+                                  <>
+                                    <div className="p-6 md:p-8 flex flex-col gap-6 relative group/content">
+                                    <button
+                                      onClick={() => {
+                                        if (window.confirm('Are you sure you want to delete this daily ward round record?')) {
+                                          const newChecks = patient.dailyChecks.filter(c => c.id !== check.id);
+                                          onUpdate({
+                                            ...patient,
+                                            dailyChecks: newChecks
+                                          });
+                                          if (currentCheckIndex >= newChecks.length) {
+                                            setCurrentCheckIndex(Math.max(0, newChecks.length - 1));
+                                          }
+                                        }
+                                      }}
+                                      className="absolute top-4 right-4 p-2 text-natural-300 hover:text-terracotta-500 transition-colors opacity-0 group-hover/content:opacity-100 bg-white border border-natural-100 rounded-full shadow-sm hover:shadow-md z-10"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+
+                                    <div className="grid grid-cols-4 gap-2">
+                                      {([
+                                        {
+                                          key: 'bleeding', label: 'Bleeding', iconBg: 'bg-red-50',
+                                          icon: <Droplets className="w-3.5 h-3.5 text-red-400" />,
+                                          el: <select value={check.bleeding} onChange={e => handleCheckFieldUpdate(check.id, 'bleeding', e.target.value)} className={`bg-transparent text-xs font-bold focus:outline-hidden cursor-pointer ${check.bleeding !== 'None' ? 'text-red-600' : 'text-natural-800'}`}>{['None','Minor','Significant'].map(o=><option key={o}>{o}</option>)}</select>,
+                                        },
+                                        {
+                                          key: 'airway', label: 'Airway', iconBg: 'bg-sky-50',
+                                          icon: <Wind className="w-3.5 h-3.5 text-sky-400" />,
+                                          el: <select value={check.airway} onChange={e => handleCheckFieldUpdate(check.id, 'airway', e.target.value)} className={`bg-transparent text-xs font-bold focus:outline-hidden cursor-pointer ${check.airway !== 'Clear' ? 'text-red-600' : 'text-natural-800'}`}>{['Clear','Stridor','Obstructed'].map(o=><option key={o}>{o}</option>)}</select>,
+                                        },
+                                        {
+                                          key: 'temp', label: 'Temp', iconBg: 'bg-orange-50',
+                                          icon: <Thermometer className="w-3.5 h-3.5 text-orange-400" />,
+                                          el: <span className="flex items-baseline gap-0.5"><input type="number" value={check.fever} step={0.1} onChange={e => handleCheckFieldUpdate(check.id, 'fever', parseFloat(e.target.value)||0)} className={`w-12 bg-transparent text-xs font-bold focus:outline-hidden ${check.fever > 38 ? 'text-orange-600' : 'text-natural-800'}`} /><span className="text-[9px] text-natural-400">°C</span></span>,
+                                        },
+                                        {
+                                          key: 'drain', label: 'Drain', iconBg: 'bg-blue-50',
+                                          icon: <Droplets className="w-3.5 h-3.5 text-blue-400" />,
+                                          el: <span className="flex items-baseline gap-0.5"><input type="number" value={check.drainAmount} onChange={e => handleCheckFieldUpdate(check.id, 'drainAmount', parseInt(e.target.value)||0)} className="w-12 bg-transparent text-xs font-bold text-natural-800 focus:outline-hidden" /><span className="text-[9px] text-natural-400">cc</span></span>,
+                                        },
+                                        {
+                                          key: 'swallow', label: 'Swallow', iconBg: 'bg-emerald-50',
+                                          icon: <Activity className="w-3.5 h-3.5 text-emerald-500" />,
+                                          el: <select value={check.swallowing} onChange={e => handleCheckFieldUpdate(check.id, 'swallowing', e.target.value)} className={`bg-transparent text-xs font-bold focus:outline-hidden cursor-pointer ${check.swallowing !== 'Normal' ? 'text-red-600' : 'text-natural-800'}`}>{['Normal','Dysphagia','NPO'].map(o=><option key={o}>{o}</option>)}</select>,
+                                        },
+                                        {
+                                          key: 'cnnvii', label: 'CN VII', iconBg: 'bg-violet-50',
+                                          icon: <User className="w-3.5 h-3.5 text-violet-400" />,
+                                          el: <select value={check.facialNerve} onChange={e => handleCheckFieldUpdate(check.id, 'facialNerve', e.target.value)} className={`bg-transparent text-xs font-bold focus:outline-hidden cursor-pointer ${check.facialNerve !== 'Intact' ? 'text-red-600' : 'text-natural-800'}`}>{['Intact','Paresis','Paralysis'].map(o=><option key={o}>{o}</option>)}</select>,
+                                        },
+                                        {
+                                          key: 'pain', label: 'Pain', iconBg: 'bg-rose-50',
+                                          icon: <CloudLightning className="w-3.5 h-3.5 text-rose-400" />,
+                                          el: <span className="flex items-baseline gap-0.5"><input type="number" value={check.painLevel} min={0} max={10} onChange={e => handleCheckFieldUpdate(check.id, 'painLevel', parseInt(e.target.value)||0)} className={`w-8 bg-transparent text-xs font-bold focus:outline-hidden ${check.painLevel > 6 ? 'text-rose-600' : 'text-natural-800'}`} /><span className="text-[9px] text-natural-400">/10</span></span>,
+                                        },
+                                        {
+                                          key: 'hoarse', label: 'Hoarse', iconBg: 'bg-amber-50',
+                                          icon: <Volume2 className="w-3.5 h-3.5 text-amber-400" />,
+                                          el: <select value={check.hoarseness ? 'Yes' : 'No'} onChange={e => handleCheckFieldUpdate(check.id, 'hoarseness', e.target.value === 'Yes')} className={`bg-transparent text-xs font-bold focus:outline-hidden cursor-pointer ${check.hoarseness ? 'text-amber-600' : 'text-natural-800'}`}>{['No','Yes'].map(o=><option key={o}>{o}</option>)}</select>,
+                                        },
+                                      ] as {key:string, label:string, iconBg:string, icon:React.ReactNode, el:React.ReactNode}[]).map(({key, label, iconBg, icon, el}) => (
+                                        <div key={key} className="flex items-center gap-2 p-2.5 rounded-xl bg-white border border-natural-100 shadow-xs">
+                                          <div className={`w-7 h-7 rounded-lg ${iconBg} flex items-center justify-center shrink-0`}>
+                                            {icon}
+                                          </div>
+                                          <div className="flex flex-col min-w-0">
+                                            <span className="text-[9px] font-bold text-natural-400 uppercase tracking-wider leading-none mb-0.5">{label}</span>
+                                            {el}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+
+                                    <div className="flex-1 shrink-0 pt-6 lg:pt-0 lg:pl-8 lg:border-l border-natural-100 max-w-md">
+                                      <div className="flex justify-between items-center mb-3">
+                                        <p className="text-[10px] font-bold text-natural-400 uppercase tracking-widest">Rounding Checklist</p>
+                                        <button
+                                          onClick={() => {
+                                            const notesArray = normalizeNotes(check.notes);
+                                            handleCheckFieldUpdate(check.id, 'notes', [...notesArray, { text: '', completed: false }]);
+                                          }}
+                                          className="p-1 text-sage-500 hover:bg-sage-50 rounded transition-all"
+                                        >
+                                          <Plus className="w-3 h-3" />
+                                        </button>
+                                      </div>
+                                      <ul className="space-y-2">
+                                        {(normalizeNotes(check.notes)).map((noteRaw, idx) => {
+                                          const note = typeof noteRaw === 'string' ? { text: noteRaw, completed: false } : noteRaw;
+                                          return (
+                                            <li
+                                              key={idx}
+                                              className={`flex gap-2 items-start group/item transition-all ${
+                                                note.completed ? 'opacity-40' : 'opacity-100'
+                                              }`}
+                                            >
+                                              <div className="flex flex-col gap-0 opacity-0 group-hover/item:opacity-100 transition-opacity shrink-0">
+                                                <button
+                                                  onClick={(e) => { e.stopPropagation(); handleMoveNote(check.id, idx, 'up'); }}
+                                                  disabled={idx === 0}
+                                                  className="p-0.5 hover:bg-natural-100 rounded disabled:opacity-0 text-natural-400 hover:text-sage-600"
+                                                >
+                                                  <ChevronUp className="w-3 h-3" />
+                                                </button>
+                                                <button
+                                                  onClick={(e) => { e.stopPropagation(); handleMoveNote(check.id, idx, 'down'); }}
+                                                  disabled={idx === check.notes.length - 1}
+                                                  className="p-0.5 hover:bg-natural-100 rounded disabled:opacity-0 text-natural-400 hover:text-sage-600"
+                                                >
+                                                  <ChevronDown className="w-3 h-3" />
+                                                </button>
+                                              </div>
+
+                                              <div
+                                                onClick={() => handleToggleNoteCompletion(check.id, idx)}
+                                                className={`w-4 h-4 rounded border flex items-center justify-center transition-all mt-1 shrink-0 cursor-pointer ${
+                                                  note.completed ? 'bg-sage-400 border-sage-500' : 'bg-white border-natural-200 group-hover/item:border-sage-400'
+                                                }`}
+                                              >
+                                                {note.completed && <X className="w-3 h-3 text-white" />}
+                                              </div>
+
+                                              <div className="flex-1 min-w-0">
+                                                <input
+                                                  value={note.text}
+                                                  onChange={(e) => handleUpdateNoteText(check.id, idx, e.target.value)}
+                                                  className={`w-full bg-transparent text-sm font-medium leading-tight focus:outline-hidden border-b border-transparent hover:border-natural-100 focus:border-sage-400 ${
+                                                    note.completed ? 'line-through text-natural-400' : 'text-natural-900 italic'
+                                                  }`}
+                                                />
+                                              </div>
+
+                                              <button
+                                                onClick={() => {
+                                                  const notesArray = normalizeNotes(check.notes);
+                                                  handleCheckFieldUpdate(check.id, 'notes', notesArray.filter((_, i) => i !== idx));
+                                                }}
+                                                className="opacity-0 group-hover/item:opacity-100 p-1 text-natural-300 hover:text-terracotta-500 transition-all shrink-0"
+                                              >
+                                                <Trash2 className="w-3 h-3" />
+                                              </button>
+                                            </li>
+                                          );
+                                        })}
+                                      </ul>
+                                    </div>
+                                    </div>
+                                  </>
+                                );
+                              })()}
+                            </motion.div>
+                          ) : (
+                            <div className="bg-white rounded-3xl border border-natural-200 shadow-xl p-12 text-center text-natural-400">
+                              No records found for this patient.
+                            </div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
       </div>
 
       {/* JSON Import Modal */}
@@ -1414,10 +1399,12 @@ function DropdownSelect({
   value,
   onChange,
   options,
+  compact = false,
 }: {
   value: string;
   onChange: (v: string) => void;
   options: { value: string; label: string; triggerClass: string; dotColor: string }[];
+  compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -1438,11 +1425,14 @@ function DropdownSelect({
       <button
         type="button"
         onClick={() => setOpen(p => !p)}
-        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-bold tracking-wide transition-all ${current.triggerClass}`}
+        title={current.label}
+        className={compact
+          ? `w-4 h-4 rounded-full ${current.dotColor} ring-2 ring-offset-2 ring-transparent hover:ring-current transition-all`
+          : `flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-bold tracking-wide transition-all ${current.triggerClass}`}
       >
-        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${current.dotColor}`} />
-        {current.label}
-        <ChevronDown className={`w-3 h-3 transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
+        {!compact && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${current.dotColor}`} />}
+        {!compact && current.label}
+        {!compact && <ChevronDown className={`w-3 h-3 transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />}
       </button>
       <AnimatePresence>
         {open && (
