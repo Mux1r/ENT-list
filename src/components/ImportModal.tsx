@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Patient, Gender } from '../types';
 import { X, Clipboard, Save, Info, FileJson, FileText, ImageIcon, Loader2, Check } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -127,6 +127,18 @@ export default function ImportModal({ onImport, onCancel }: ImportModalProps) {
     setAnalyzeError('');
   };
 
+  // Ctrl+V 直接貼上截圖（螢幕擷取工具會把圖片放進剪貼簿）
+  useEffect(() => {
+    if (importMode !== 'screenshot') return;
+    const onPaste = (e: ClipboardEvent) => {
+      const file = Array.from(e.clipboardData?.items || [])
+        .find(i => i.type.startsWith('image/'))?.getAsFile();
+      if (file) { e.preventDefault(); handleImageSelect(file); }
+    };
+    window.addEventListener('paste', onPaste);
+    return () => window.removeEventListener('paste', onPaste);
+  }, [importMode]);
+
   const handleAnalyze = async () => {
     if (!imageFile) return;
     setAnalyzing(true);
@@ -250,7 +262,7 @@ export default function ImportModal({ onImport, onCancel }: ImportModalProps) {
                 ) : (
                   <div className="space-y-2">
                     <ImageIcon className="w-10 h-10 text-natural-300 group-hover:text-sage-400 mx-auto transition-colors" />
-                    <p className="text-sm font-bold text-natural-600">點擊或拖曳截圖至此</p>
+                    <p className="text-sm font-bold text-natural-600">點擊、拖曳，或直接按 Ctrl+V 貼上截圖</p>
                     <p className="text-xs text-natural-400">支援 JPG、PNG、WebP</p>
                   </div>
                 )}
