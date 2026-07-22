@@ -69,6 +69,9 @@ export interface Patient {
   examinations: Examination[];
 dailyChecks: ENTChecklist[];
   briefing?: string;   // 交班報告原文 (markdown)
+  // ponytail: 單場刀。一人多場/多天要排的話再改成 operations[]
+  opDate?: string;       // YYYY-MM-DD
+  opProcedure?: string;  // 術式
   // kept optional for backward compat with existing Firestore docs
   admissionDiagnosis?: string;
   preliminaryDiagnosis?: string;

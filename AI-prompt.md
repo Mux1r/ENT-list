@@ -7,6 +7,8 @@
 {
   "diagnosis": "診斷（含入院診斷與目前診斷）",
   "status": "Stable 或 Critical 或 Discharge Pending 或 Discharged",
+  "opDate": "手術日期 YYYY-MM-DD（已排刀或已開刀才填）",
+  "opProcedure": "術式名稱（有 opDate 才填）",
   "medications": [
     {ㄅ
       "id": "",

@@ -24,6 +24,7 @@ import { Patient, ENTChecklist } from './types';
 import PatientDetails from './components/PatientDetails';
 import PatientForm from './components/PatientForm';
 import ImportModal from './components/ImportModal';
+import TodaySchedule from './components/TodaySchedule';
 import { db, auth, loginWithGoogle, logout } from './lib/firebase';
 import {
   collection,
@@ -49,6 +50,7 @@ export default function App() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [showSchedule, setShowSchedule] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showDischarged, setShowDischarged] = useState(false);
@@ -135,6 +137,7 @@ export default function App() {
         name, bedNumber, age, gender, chartNumber,
         admissionDate, diagnosis, status, dailyChecks,
         medications, labTests, examinations, briefing,
+        opDate, opProcedure,
       } = updatedPatient;
 
       // Firestore rejects undefined values — strip them via JSON round-trip
@@ -145,6 +148,8 @@ export default function App() {
         name, bedNumber, age, gender, chartNumber,
         admissionDate, diagnosis, status,
         briefing: briefing ?? '',
+        opDate: opDate ?? '',
+        opProcedure: opProcedure ?? '',
         dailyChecks: clean(dailyChecks || []),
         medications: clean(medications || []),
         labTests: clean(labTests || []),
@@ -329,6 +334,14 @@ export default function App() {
                   切換
                 </button>
               </>
+            ) : showSchedule ? (
+              <button
+                onClick={() => setShowSchedule(false)}
+                className="flex items-center gap-1 text-xs font-bold uppercase tracking-widest text-natural-400 hover:text-sage-600 group transition-colors"
+              >
+                <ChevronRight className="w-4 h-4 rotate-180 group-hover:-translate-x-0.5 transition-transform" />
+                病患列表
+              </button>
             ) : (
               <div className="flex gap-0.5 p-0.5 bg-natural-100 rounded-lg border border-natural-200">
                 <button
@@ -380,7 +393,7 @@ export default function App() {
               </button>
             </div>
 
-            {!selectedPatientId && (
+            {!selectedPatientId && !showSchedule && (
               isEditMode ? (
                 <button onClick={exitEditMode} className="px-4 py-2 rounded-lg text-xs font-bold bg-natural-100 text-natural-600 border border-natural-200 hover:bg-natural-200 transition-all">完成</button>
               ) : (
@@ -441,7 +454,19 @@ export default function App() {
 
         <div className="flex-1 overflow-auto p-8">
           <AnimatePresence mode="wait">
-            {!selectedPatientId ? (
+            {!selectedPatientId && showSchedule ? (
+              <motion.div
+                key="schedule"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+              >
+                <TodaySchedule
+                  patients={patients}
+                  onSelect={(id) => { setSelectedPatientId(id); setShowSchedule(false); }}
+                />
+              </motion.div>
+            ) : !selectedPatientId ? (
               <motion.div
                 key="list"
                 initial={{ opacity: 0, y: 10 }}
@@ -604,14 +629,19 @@ export default function App() {
                 <div className="flex-1 px-3 py-4 space-y-1">
                   <button
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
-                      !selectedPatientId ? 'bg-sage-100 text-sage-700' : 'text-natural-400 hover:bg-white hover:text-natural-600'
+                      !selectedPatientId && !showSchedule ? 'bg-sage-100 text-sage-700' : 'text-natural-400 hover:bg-white hover:text-natural-600'
                     }`}
-                    onClick={() => { setSelectedPatientId(null); setShowSidebar(false); }}
+                    onClick={() => { setSelectedPatientId(null); setShowSchedule(false); setShowSidebar(false); }}
                   >
                     <Users className="w-4 h-4 shrink-0" />
                     病患列表
                   </button>
-                  <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-natural-400 hover:bg-white hover:text-natural-600 transition-all">
+                  <button
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+                      !selectedPatientId && showSchedule ? 'bg-sage-100 text-sage-700' : 'text-natural-400 hover:bg-white hover:text-natural-600'
+                    }`}
+                    onClick={() => { setSelectedPatientId(null); setShowSchedule(true); setShowSidebar(false); }}
+                  >
                     <ClipboardList className="w-4 h-4 shrink-0" />
                     今日排程
                   </button>

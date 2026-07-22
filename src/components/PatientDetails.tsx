@@ -231,6 +231,8 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
     age: patient.age.toString(),
     admissionDate: patient.admissionDate,
     diagnosis: patient.diagnosis || '',
+    opDate: patient.opDate || '',
+    opProcedure: patient.opProcedure || '',
   });
 
   React.useEffect(() => {
@@ -241,8 +243,10 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
       age: patient.age.toString(),
       admissionDate: patient.admissionDate,
       diagnosis: patient.diagnosis || '',
+      opDate: patient.opDate || '',
+      opProcedure: patient.opProcedure || '',
     });
-  }, [patient.id, patient.name, patient.bedNumber, patient.chartNumber, patient.age, patient.admissionDate, patient.diagnosis]);
+  }, [patient.id, patient.name, patient.bedNumber, patient.chartNumber, patient.age, patient.admissionDate, patient.diagnosis, patient.opDate, patient.opProcedure]);
 
   const handleLocalChange = (field: keyof typeof localFields, value: string) => {
     setLocalFields(prev => ({ ...prev, [field]: value }));
@@ -356,7 +360,7 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
 
     const allowed = [
       'name', 'bedNumber', 'chartNumber', 'age', 'gender', 'admissionDate',
-      'diagnosis', 'status',
+      'diagnosis', 'status', 'opDate', 'opProcedure',
       'medications', 'labTests', 'examinations', 'dailyChecks',
     ] as const;
 
@@ -442,6 +446,8 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
       age: merged.age.toString(),
       admissionDate: merged.admissionDate,
       diagnosis: merged.diagnosis || '',
+      opDate: merged.opDate || '',
+      opProcedure: merged.opProcedure || '',
     });
     closeJsonModal();
   };
@@ -647,6 +653,22 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
             onChange={(e) => handleLocalChange('admissionDate', e.target.value)}
             onBlur={() => syncField('admissionDate', localFields.admissionDate)}
             className="font-bold text-natural-400 bg-transparent border-b border-transparent hover:border-natural-200 focus:border-sage-500 focus:outline-hidden w-auto"
+          />
+          <span className="text-natural-200">·</span>
+          <span className="text-[10px] font-bold uppercase tracking-widest text-natural-300 shrink-0">OP</span>
+          <input
+            type="date"
+            value={localFields.opDate}
+            onChange={(e) => handleLocalChange('opDate', e.target.value)}
+            onBlur={() => syncField('opDate', localFields.opDate)}
+            className="font-bold text-natural-400 bg-transparent border-b border-transparent hover:border-natural-200 focus:border-sage-500 focus:outline-hidden w-auto"
+          />
+          <input
+            value={localFields.opProcedure}
+            onChange={(e) => handleLocalChange('opProcedure', e.target.value)}
+            onBlur={() => syncField('opProcedure', localFields.opProcedure)}
+            placeholder="術式…"
+            className="flex-1 min-w-0 text-natural-400 bg-transparent border-b border-transparent hover:border-natural-200 focus:border-sage-500 focus:outline-hidden placeholder-natural-200"
           />
         </div>
       </div>
