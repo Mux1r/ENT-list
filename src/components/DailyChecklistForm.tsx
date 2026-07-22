@@ -11,17 +11,10 @@ interface DailyChecklistFormProps {
 }
 
 export default function DailyChecklistForm({ initialData, onSubmit, onCancel }: DailyChecklistFormProps) {
+  // 不預填任何評估值 —— 沒點過的項目維持 undefined（未評估），
+  // 才不會把「沒看」記錄成「看了，正常」。
   const [formData, setFormData] = useState<Partial<ENTChecklist>>({
     date: new Date().toISOString(),
-    bleeding: 'None',
-    airway: 'Clear',
-    swallowing: 'Normal',
-    facialNerve: 'Intact',
-    hoarseness: false,
-    drainAmount: 0,
-    woundStatus: 'Clean',
-    painLevel: 0,
-    fever: 36.5,
     notes: [{ text: '', completed: false }]
   });
 
@@ -82,10 +75,12 @@ export default function DailyChecklistForm({ initialData, onSubmit, onCancel }: 
     updateField('notes', newNotes.length > 0 ? newNotes : [{ text: '', completed: false }]);
   };
 
+  // 再點一次已選的值即取消 → 回到「未評估」
   const SelectionButton = ({ field, value, label, activeColor }: { field: keyof ENTChecklist, value: string, label: string, activeColor: string }) => (
     <button
       type="button"
-      onClick={() => updateField(field, value)}
+      title={formData[field] === value ? '再點一次可取消（未評估）' : undefined}
+      onClick={() => updateField(field, formData[field] === value ? undefined : value)}
       className={`flex-1 py-2 text-[10px] font-bold rounded-lg border transition-all uppercase tracking-widest ${
         formData[field] === value 
           ? `${activeColor} text-white border-transparent shadow-sm` 
@@ -159,40 +154,46 @@ export default function DailyChecklistForm({ initialData, onSubmit, onCancel }: 
                </div>
              </div>
 
-             <div className="flex items-center gap-4 py-2">
-               <label className="flex items-center gap-3 cursor-pointer group">
-                 <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
-                   formData.hoarseness ? 'bg-terracotta-500 border-terracotta-500' : 'bg-white border-natural-200 group-hover:border-natural-300'
-                 }`}>
-                   {formData.hoarseness && <X className="w-3.5 h-3.5 text-white" />}
-                 </div>
-                 <input 
-                  type="checkbox" 
-                  className="hidden"
-                  checked={formData.hoarseness} 
-                  onChange={(e) => updateField('hoarseness', e.target.checked)}
-                 />
-                 <span className="text-xs font-bold text-natural-600">Hoarseness / Voice Change</span>
-               </label>
+             <div>
+               <label className="block text-[10px] font-bold text-natural-400 uppercase tracking-widest mb-3">Hoarseness / Voice Change</label>
+               <div className="flex gap-2">
+                 {/* 用與其他項目一致的按鈕組，才能表達「未評估」 */}
+                 <button
+                   type="button"
+                   onClick={() => updateField('hoarseness', formData.hoarseness === false ? undefined : false)}
+                   className={`flex-1 py-2 text-[10px] font-bold rounded-lg border transition-all uppercase tracking-widest ${
+                     formData.hoarseness === false ? 'bg-sage-500 text-white border-transparent shadow-sm' : 'bg-white text-natural-400 border-natural-200 hover:border-natural-300'
+                   }`}
+                 >No</button>
+                 <button
+                   type="button"
+                   onClick={() => updateField('hoarseness', formData.hoarseness === true ? undefined : true)}
+                   className={`flex-1 py-2 text-[10px] font-bold rounded-lg border transition-all uppercase tracking-widest ${
+                     formData.hoarseness === true ? 'bg-terracotta-500 text-white border-transparent shadow-sm' : 'bg-white text-natural-400 border-natural-200 hover:border-natural-300'
+                   }`}
+                 >Yes</button>
+               </div>
              </div>
 
              <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] font-bold text-natural-400 uppercase tracking-widest mb-2">Drain (cc)</label>
-                  <input 
-                    type="number" 
-                    value={formData.drainAmount}
-                    onChange={(e) => updateField('drainAmount', parseInt(e.target.value))}
+                  <input
+                    type="number"
+                    placeholder="未評估"
+                    value={formData.drainAmount ?? ''}
+                    onChange={(e) => updateField('drainAmount', e.target.value === '' ? undefined : parseInt(e.target.value))}
                     className="w-full px-4 py-2 bg-natural-50 border border-natural-200 rounded-lg text-sm outline-hidden focus:ring-2 focus:ring-sage-500/20 focus:border-sage-500 transition-all font-bold text-natural-900"
                   />
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold text-natural-400 uppercase tracking-widest mb-2">Temp (°C)</label>
-                  <input 
-                    type="number" 
+                  <input
+                    type="number"
                     step="0.1"
-                    value={formData.fever}
-                    onChange={(e) => updateField('fever', parseFloat(e.target.value))}
+                    placeholder="未評估"
+                    value={formData.fever ?? ''}
+                    onChange={(e) => updateField('fever', e.target.value === '' ? undefined : parseFloat(e.target.value))}
                     className="w-full px-4 py-2 bg-natural-50 border border-natural-200 rounded-lg text-sm outline-hidden focus:ring-2 focus:ring-sage-500/20 focus:border-sage-500 transition-all font-bold text-natural-900"
                   />
                 </div>
@@ -204,17 +205,29 @@ export default function DailyChecklistForm({ initialData, onSubmit, onCancel }: 
              <div>
                <label className="block text-[10px] font-bold text-natural-400 uppercase tracking-widest mb-2">Pain Level (VAS)</label>
                <div className="pt-2">
-                 <input 
-                  type="range" 
-                  min="0" 
-                  max="10" 
-                  value={formData.painLevel}
+                 <input
+                  type="range"
+                  min="0"
+                  max="10"
+                  value={formData.painLevel ?? 0}
                   onChange={(e) => updateField('painLevel', parseInt(e.target.value))}
-                  className="w-full h-1.5 bg-natural-200 rounded-lg appearance-none cursor-pointer accent-sage-500"
+                  className={`w-full h-1.5 bg-natural-200 rounded-lg appearance-none cursor-pointer accent-sage-500 ${formData.painLevel === undefined ? 'opacity-40' : ''}`}
                  />
                  <div className="flex justify-between items-center mt-3 font-bold text-[9px] uppercase tracking-tighter">
                    <span className="text-sage-600">None</span>
-                   <span className="bg-sage-100 text-sage-700 px-2 py-0.5 rounded border border-sage-200">Value: {formData.painLevel}</span>
+                   {/* slider 無法表達「未評估」，故用可點的徽章切換 */}
+                   <button
+                     type="button"
+                     onClick={() => updateField('painLevel', formData.painLevel === undefined ? 0 : undefined)}
+                     title={formData.painLevel === undefined ? '點擊開始記錄' : '點擊標為未評估'}
+                     className={`px-2 py-0.5 rounded border transition-colors ${
+                       formData.painLevel === undefined
+                         ? 'bg-natural-50 text-natural-400 border-natural-200 hover:border-sage-400'
+                         : 'bg-sage-100 text-sage-700 border-sage-200'
+                     }`}
+                   >
+                     {formData.painLevel === undefined ? '未評估' : `Value: ${formData.painLevel}`}
+                   </button>
                    <span className="text-terracotta-500">Severe</span>
                  </div>
                </div>

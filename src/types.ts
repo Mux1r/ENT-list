@@ -1,17 +1,23 @@
 export type Gender = 'Male' | 'Female' | 'Other';
 
+// 各評估項目一律選填：「鍵不存在」＝未評估，與「評估了，正常」是不同的事。
+// 舊資料的必填值仍可直接讀取，不需 migration。
 export interface ENTChecklist {
   id: string;
   date: string;
-  bleeding: 'None' | 'Minor' | 'Significant';
-  airway: 'Clear' | 'Stridor' | 'Obstructed';
-  swallowing: 'Normal' | 'Dysphagia' | 'NPO';
-  facialNerve: 'Intact' | 'Paresis' | 'Paralysis';
-  hoarseness: boolean;
-  drainAmount: number;
-  woundStatus: 'Clean' | 'Hyperemia' | 'Discharge';
-  painLevel: number;
-  fever: number;
+  bleeding?: 'None' | 'Minor' | 'Significant';
+  airway?: 'Clear' | 'Stridor' | 'Obstructed';
+  swallowing?: 'Normal' | 'Dysphagia' | 'NPO';
+  facialNerve?: 'Intact' | 'Paresis' | 'Paralysis';
+  hoarseness?: boolean;
+  drainAmount?: number;
+  woundStatus?: 'Clean' | 'Hyperemia' | 'Discharge';
+  painLevel?: number;
+  fever?: number;
+  flap?: 'Viable' | 'Congested' | 'Ischemic' | 'Failed';
+  tracheostomy?: 'In situ' | 'Capped' | 'Decannulated';
+  calcium?: number;
+  // ponytail: 單一總量。雙側/多條 drain 分別記錄的話改成 drains[]，目前先寫進 notes
   notes: { text: string; completed: boolean }[];
 }
 
@@ -62,6 +68,7 @@ export interface Patient {
   labTests: LabTest[];
   examinations: Examination[];
 dailyChecks: ENTChecklist[];
+  briefing?: string;   // 交班報告原文 (markdown)
   // kept optional for backward compat with existing Firestore docs
   admissionDiagnosis?: string;
   preliminaryDiagnosis?: string;

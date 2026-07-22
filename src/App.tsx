@@ -86,7 +86,15 @@ export default function App() {
       snapshot.forEach((doc) => {
         const data = doc.data();
         if (data.dailyChecks) {
-          data.dailyChecks = [...data.dailyChecks].sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+          // 匯入的紀錄可能缺 date/notes。缺 date 會讓 sort 與 date-fns format 直接 throw → 整個 app 白屏。
+          // 這裡是唯一的讀取點，補在這裡下游就都乾淨。
+          data.dailyChecks = [...data.dailyChecks]
+            .map((c: any) => ({
+              ...c,
+              date: isNaN(Date.parse(c.date)) ? new Date(0).toISOString() : c.date,
+              notes: Array.isArray(c.notes) ? c.notes : [],
+            }))
+            .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
         }
         patientData.push({
           medications: [],
@@ -126,7 +134,7 @@ export default function App() {
       const {
         name, bedNumber, age, gender, chartNumber,
         admissionDate, diagnosis, status, dailyChecks,
-        medications, labTests, examinations,
+        medications, labTests, examinations, briefing,
       } = updatedPatient;
 
       // Firestore rejects undefined values — strip them via JSON round-trip
@@ -136,6 +144,7 @@ export default function App() {
       await updateDoc(patientRef, {
         name, bedNumber, age, gender, chartNumber,
         admissionDate, diagnosis, status,
+        briefing: briefing ?? '',
         dailyChecks: clean(dailyChecks || []),
         medications: clean(medications || []),
         labTests: clean(labTests || []),

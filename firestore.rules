@@ -65,7 +65,7 @@ service cloud.firestore {
         && (incoming().diff(existing()).affectedKeys().hasOnly([
              'name', 'bedNumber', 'age', 'gender', 'chartNumber',
              'admissionDate', 'diagnosis', 'status', 'updatedAt',
-             'dailyChecks', 'clinicalPearls',
+             'dailyChecks', 'clinicalPearls', 'briefing',
              'medications', 'labTests', 'examinations',
              // legacy fields kept for backward compat
              'admissionDiagnosis', 'preliminaryDiagnosis', 'treatmentPlan'

@@ -31,78 +31,115 @@ import { Medication, LabTest, Examination } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { Patient, ENTChecklist } from '../types';
 import DailyChecklistForm from './DailyChecklistForm';
+import Markdown from './Markdown';
 import { format } from 'date-fns';
 
-const JSON_IMPORT_PROMPT = `你是一個醫療資料結構化助手。病患的基本資料（姓名、床號、病歷號、年齡、性別、入院日期）已建立，請根據我提供的病患臨床資訊，產出以下 JSON 格式的資料。
+const JSON_IMPORT_PROMPT = `你是一個醫療資料結構化助手。病患的基本資料（姓名、床號、病歷號、年齡、性別、入院日期）已建立，請根據我提供的病患臨床資訊，產出下列 JSON。
 
-## 輸出格式
+## 欄位定義（不要輸出 id；沒有值的選填欄位「直接不要輸出該鍵」，不要寫空字串或「省略」）
 
-{
-  "diagnosis": "診斷（含入院診斷與目前診斷）",
-  "status": "Stable 或 Critical 或 Discharge Pending",
-  "medications": [
-    {
-      "id": "",
-      "name": "藥物名稱",
-      "dose": "劑量（如 500mg）",
-      "frequency": "頻率（如 BID、QD）",
-      "route": "給藥途徑（如 PO、IV）",
-      "startDate": "YYYY-MM-DD",
-      "endDate": "YYYY-MM-DD 或省略",
-      "stopReason": "停藥原因或省略"
-    }
-  ],
-  "labTests": [
-    {
-      "id": "",
-      "name": "檢驗項目名稱",
-      "orderedDate": "YYYY-MM-DD",
-      "resultDate": "YYYY-MM-DD 或省略",
-      "value": "數值或省略",
-      "unit": "單位或省略",
-      "referenceRange": "參考範圍或省略",
-      "isAbnormal": true 或 false,
-      "abnormalDir": "H 或 L（isAbnormal 為 true 才填，H=偏高，L=偏低）",
-      "status": "pending 或 resulted",
-      "category": "CBC/DC 或 生化 或 凝血 或 電解質 或 尿液 或 培養 或 其他"
-    }
-  ],
-  "examinations": [
-    {
-      "id": "",
-      "name": "檢查名稱（如 CT Neck、CXR）",
-      "orderedDate": "YYYY-MM-DD",
-      "status": "pending 或 resulted",
-      "finding": "檢查結果或省略"
-    }
-  ],
-  "dailyChecks": [
-    {
-      "id": "",
-      "date": "YYYY-MM-DDTHH:mm:ssZ",
-      "bleeding": "None 或 Minor 或 Significant",
-      "airway": "Clear 或 Stridor 或 Obstructed",
-      "swallowing": "Normal 或 Dysphagia 或 NPO",
-      "facialNerve": "Intact 或 Paresis 或 Paralysis",
-      "hoarseness": true 或 false,
-      "drainAmount": 引流量cc數字,
-      "woundStatus": "Clean 或 Hyperemia 或 Discharge",
-      "painLevel": 0到10的數字,
-      "fever": 體溫數字（攝氏）,
-      "notes": [{ "text": "備註", "completed": false }]
-    }
-  ]
-}
+medications[] 每筆＝一個藥物：
+- name 藥名、dose 劑量(如 500mg)、frequency 頻率(如 BID/QID/Q8H/PRN)、startDate YYYY-MM-DD
+- 選填：route 途徑(PO/IV)、endDate、stopReason
+
+labTests[] 每筆＝一個檢驗值（例：WBC、Crea、Na 各一筆）：
+- name 項目、orderedDate YYYY-MM-DD
+- 不用輸出 status：系統依有無 value 自動判定（已開單但結果未出，就不要給 value）
+- 選填：value 數值、unit 單位、referenceRange、category(CBC/DC、生化、凝血、電解質、尿液、培養、其他)
+- 只有異常才加：isAbnormal:true、abnormalDir "H" 或 "L"
+
+examinations[] 每筆＝一項影像/檢查(如 CXR、CT Neck)：
+- name、orderedDate、status；選填 finding 報告內容
+
+dailyChecks[] 每筆＝某一天的查房評估（一天一筆，date 用該次查房日期）：
+- date YYYY-MM-DDTHH:mm:ssZ（必填）
+- **以下全部選填，且「病歷沒明確評估到的項目，直接不要輸出該鍵」**——
+  未評估不等於正常，不可用正常值填補：
+  bleeding(None/Minor/Significant)、airway(Clear/Stridor/Obstructed)、
+  swallowing(Normal/Dysphagia/NPO)、facialNerve(Intact/Paresis/Paralysis)、
+  hoarseness(true/false)、drainAmount(數字cc)、woundStatus(Clean/Hyperemia/Discharge)、
+  painLevel(0-10)、fever(攝氏數字)、flap(Viable/Congested/Ischemic/Failed)、
+  tracheostomy(In situ/Capped/Decannulated)、calcium(數字 mg/dL)
+- 例：parotidectomy 病人若病歷只提到 wound 與 pain，就只輸出 woundStatus 與 painLevel，
+  不要附上 airway/swallowing/facialNerve
+- 選填 notes: [{ "text": "備註", "completed": false }]（未記載但值得提醒的事寫這裡）
+
+頂層另有：
+- diagnosis：優先「原文照抄」progress note 的 problem list（或 A/Assessment 段的診斷列），
+  不改寫、不重組語序。無 problem list 時才取術後診斷或入院診斷，格式
+  「{側別} {部位} {診斷} s/p {術式}」。病理回報後以病理診斷取代臨床推測診斷。
+  同一病人每日用字須一致——除非診斷實質改變，否則不要換句話說。
+- status："Stable" / "Critical" / "Discharge Pending"
 
 ## 規則
 
-- 所有 id 欄位留空字串 ""
-- 無資料的陣列填 []
+- 不要輸出 id 欄位（系統會自動產生）
+- 沒有資料的選填欄位整個省略，不要輸出空字串；沒有資料的陣列輸出 []
 - 只輸出純 JSON，不要 \`\`\`json 標記，直接從 { 開始到 } 結束
 
 ## 病患資料
 
-（在此輸入病患臨床資訊）`;
+（在此貼上病患臨床資訊，例如藥囑、生命徵象、檢驗報告、影像報告）`;
+
+// 交班報告與匯入 JSON 的分隔標記，與 data-to-list/ENT_ward_round_briefing_prompt.md 一致
+const BRIEFING_SENTINEL = '===IMPORT-JSON===';
+
+// 院內 AI 常在報告前面加上安全聲明或「以下為查房報告：」之類的開場白。
+// 報告一律從【病患摘要】起算，之前的東西全部丟掉。
+const stripPreamble = (md: string) => {
+  const i = md.search(/(^|\n)\s*#*\s*病患摘要/);
+  return i > 0 ? md.slice(i).trimStart() : md;
+};
+
+// 查房評估項目。全部選填 —— 值為 undefined 代表「未評估」，不渲染該格。
+type CheckFieldDef = {
+  key: keyof ENTChecklist;
+  label: string;
+  iconBg: string;
+  icon: React.ReactNode;
+  options?: string[];        // 有 options = 下拉；否則為數值
+  normal?: string;           // 下拉之正常值，其餘標紅
+  unit?: string;
+  step?: number;
+  abnormal?: (v: number) => boolean;
+  add: string | number | boolean;   // 從「未評估」新增時的起始值
+};
+
+const CHECK_FIELDS: CheckFieldDef[] = [
+  { key: 'bleeding',     label: 'Bleeding', iconBg: 'bg-red-50',     icon: <Droplets className="w-3.5 h-3.5 text-red-400" />,        options: ['None', 'Minor', 'Significant'],          normal: 'None',    add: 'None' },
+  { key: 'airway',       label: 'Airway',   iconBg: 'bg-sky-50',     icon: <Wind className="w-3.5 h-3.5 text-sky-400" />,            options: ['Clear', 'Stridor', 'Obstructed'],        normal: 'Clear',   add: 'Clear' },
+  { key: 'fever',        label: 'Temp',     iconBg: 'bg-orange-50',  icon: <Thermometer className="w-3.5 h-3.5 text-orange-400" />,  unit: '°C',     step: 0.1, abnormal: v => v > 38,   add: 36.5 },
+  { key: 'drainAmount',  label: 'Drain',    iconBg: 'bg-blue-50',    icon: <Droplets className="w-3.5 h-3.5 text-blue-400" />,       unit: 'cc',                                          add: 0 },
+  { key: 'swallowing',   label: 'Swallow',  iconBg: 'bg-emerald-50', icon: <Activity className="w-3.5 h-3.5 text-emerald-500" />,    options: ['Normal', 'Dysphagia', 'NPO'],            normal: 'Normal',  add: 'Normal' },
+  { key: 'facialNerve',  label: 'CN VII',   iconBg: 'bg-violet-50',  icon: <User className="w-3.5 h-3.5 text-violet-400" />,         options: ['Intact', 'Paresis', 'Paralysis'],        normal: 'Intact',  add: 'Intact' },
+  { key: 'painLevel',    label: 'Pain',     iconBg: 'bg-rose-50',    icon: <CloudLightning className="w-3.5 h-3.5 text-rose-400" />, unit: '/10',               abnormal: v => v > 6,    add: 0 },
+  { key: 'hoarseness',   label: 'Hoarse',   iconBg: 'bg-amber-50',   icon: <Volume2 className="w-3.5 h-3.5 text-amber-400" />,       options: ['No', 'Yes'],                             normal: 'No',      add: false },
+  { key: 'woundStatus',  label: 'Wound',    iconBg: 'bg-amber-50',   icon: <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />, options: ['Clean', 'Hyperemia', 'Discharge'],       normal: 'Clean',   add: 'Clean' },
+  { key: 'flap',         label: 'Flap',     iconBg: 'bg-pink-50',    icon: <Scan className="w-3.5 h-3.5 text-pink-400" />,           options: ['Viable', 'Congested', 'Ischemic', 'Failed'], normal: 'Viable', add: 'Viable' },
+  { key: 'tracheostomy', label: 'Trach',    iconBg: 'bg-cyan-50',    icon: <Wind className="w-3.5 h-3.5 text-cyan-500" />,           options: ['In situ', 'Capped', 'Decannulated'],                        add: 'In situ' },
+  { key: 'calcium',      label: 'Ca',       iconBg: 'bg-teal-50',    icon: <FlaskConical className="w-3.5 h-3.5 text-teal-500" />,   unit: 'mg/dL', step: 0.1, abnormal: v => v < 8.5,  add: 9.0 },
+];
+
+// 分頁。briefing 只在有交班報告時出現；badge 為各分頁的提醒數字。
+const TABS: { key: string; label: string; icon: React.ReactNode; badge?: (p: Patient) => React.ReactNode }[] = [
+  { key: 'briefing', label: '交班', icon: <FileText className="w-3.5 h-3.5" /> },
+  {
+    key: 'med', label: '用藥', icon: <Pill className="w-3.5 h-3.5" />,
+    badge: p => { const n = (p.medications || []).filter(m => !m.endDate).length; return n > 0 ? <span className="text-[10px] bg-natural-100 text-natural-400 px-1.5 py-0.5 rounded-full">{n}</span> : null; },
+  },
+  {
+    key: 'lab', label: '檢驗', icon: <FlaskConical className="w-3.5 h-3.5" />,
+    badge: p => { const n = (p.labTests || []).filter(l => l.isAbnormal).length; return n > 0 ? <span className="text-[10px] bg-terracotta-50 text-terracotta-500 px-1.5 py-0.5 rounded-full">⚠ {n}</span> : null; },
+  },
+  {
+    key: 'exam', label: '檢查', icon: <Scan className="w-3.5 h-3.5" />,
+    badge: p => { const n = (p.examinations || []).filter(e => e.status === 'pending').length; return n > 0 ? <span className="text-[10px] bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded-full">待 {n}</span> : null; },
+  },
+  {
+    key: 'rounds', label: 'Daily Round', icon: <ClipboardList className="w-3.5 h-3.5" />,
+    badge: p => { const n = p.dailyChecks?.length ?? 0; return n > 0 ? <span className="text-[10px] bg-natural-100 text-natural-400 px-1.5 py-0.5 rounded-full">{n}</span> : null; },
+  },
+];
 
 const LAB_CATEGORIES = ['CBC/DC', '生化', '凝血', '電解質', '尿液', '培養', '其他'] as const;
 
@@ -127,6 +164,10 @@ type ConflictItem = {
   selected: 'old' | 'new';
 };
 
+// 比對診斷時忽略標點、空白與大小寫差異，只看實質字詞
+const normalizeDx = (v: unknown) =>
+  String(v ?? '').toLowerCase().replace(/[^a-z0-9一-鿿]/g, '');
+
 const CONFLICT_FIELDS: { field: keyof Patient; label: string }[] = [
   { field: 'diagnosis', label: 'Diagnosis' },
   { field: 'status', label: 'Status' },
@@ -146,14 +187,14 @@ const normalizeNotes = (notes: ENTChecklist['notes'] | string | undefined): { te
 
 export default function PatientDetails({ patient, onUpdate, onDelete }: PatientDetailsProps) {
   const [showChecklistForm, setShowChecklistForm] = useState(false);
-  const [openSections, setOpenSections] = useState<Set<string>>(new Set());
-  const toggleSection = (key: string) => setOpenSections(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
+  const [activeTab, setActiveTab] = useState('rounds');
   const [currentCheckIndex, setCurrentCheckIndex] = useState(patient.dailyChecks.length > 0 ? patient.dailyChecks.length - 1 : 0);
 const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [showJsonModal, setShowJsonModal] = useState(false);
   const [jsonText, setJsonText] = useState('');
   const [jsonError, setJsonError] = useState('');
   const [promptCopied, setPromptCopied] = useState(false);
+  const [briefingCopied, setBriefingCopied] = useState(false);
   const [conflicts, setConflicts] = useState<ConflictItem[]>([]);
   const [pendingMerged, setPendingMerged] = useState<Patient | null>(null);
   const [checksInfo, setChecksInfo] = useState<{ added: number; updated: number } | null>(null);
@@ -289,11 +330,27 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
 
   const handleJsonImport = () => {
     setJsonError('');
+
+    // 交班報告整份貼上時：分隔標記之前是 markdown 原文，之後才是 JSON。
+    // 找不到標記 = 貼的是純 JSON，行為與過去完全相同。
+    const raw = jsonText.trim();
+    const sentinelIdx = raw.indexOf(BRIEFING_SENTINEL);
+    const briefing = sentinelIdx >= 0 ? stripPreamble(raw.slice(0, sentinelIdx).trim()) : '';
+    // ponytail: 容錯 LLM 常自作主張加上的 ``` 圍欄
+    const jsonPart = (sentinelIdx >= 0 ? raw.slice(sentinelIdx + BRIEFING_SENTINEL.length) : raw)
+      .trim().replace(/^```(?:json)?\s*|\s*```$/g, '');
+
     let parsed: any;
     try {
-      parsed = JSON.parse(jsonText.trim());
+      parsed = JSON.parse(jsonPart);
     } catch {
-      setJsonError('JSON 格式有誤，請確認內容完整（無多餘的 ```json 標記）。');
+      // 院內 AI 輸出被截斷時 JSON 會壞在尾端，但人要讀的報告仍完整 → 至少把報告存下來
+      if (briefing) {
+        onUpdate({ ...patient, briefing });
+        setJsonError('交班報告已儲存，但 JSON 解析失敗（可能被截斷），結構化資料未匯入。');
+      } else {
+        setJsonError('JSON 格式有誤，請確認內容完整（無多餘的 ```json 標記）。');
+      }
       return;
     }
 
@@ -310,14 +367,47 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
     for (const key of allowed) {
       if (!(key in parsed) || parsed[key] === undefined) continue;
       if (key === 'dailyChecks' && Array.isArray(parsed.dailyChecks)) {
+        // AI 不輸出 id，故以「日曆日」比對：同一天已有紀錄就覆寫，不再無限新增。
+        const dayOf = (d: string) => (d || '').slice(0, 10);
         const existingMap = new Map(patient.dailyChecks.map(c => [c.id, c]));
         for (const c of parsed.dailyChecks) {
-          if (existingMap.has(c.id)) { updated++; } else { added++; }
-          existingMap.set(c.id, { ...existingMap.get(c.id), ...c });
+          const prev = (c.id && existingMap.get(c.id))
+            || patient.dailyChecks.find(x => dayOf(x.date) === dayOf(c.date));
+          if (prev) {
+            updated++;
+            // 覆寫該日全部評估欄位（未評估的項目就該消失），但匯入沒帶 notes 時保留原本手寫的
+            existingMap.set(prev.id, { ...c, id: prev.id, notes: c.notes ?? prev.notes });
+          } else {
+            added++;
+            const id = crypto.randomUUID();
+            existingMap.set(id, { ...c, id });
+          }
         }
         merged.dailyChecks = Array.from(existingMap.values());
+      } else if ((key === 'medications' || key === 'labTests' || key === 'examinations') && Array.isArray(parsed[key])) {
+        (merged as any)[key] = parsed[key].map((item: any) => ({
+          ...item,
+          id: item.id || crypto.randomUUID(),
+          // labTests 的 status 不強求 AI 輸出，依有無 value 自動判定（與 saveLab 同一條規則）
+          ...(key === 'labTests' && !item.status
+            ? { status: String(item.value ?? '').trim() ? 'resulted' : 'pending' }
+            : {}),
+        }));
       } else {
         (merged as any)[key] = parsed[key];
+      }
+    }
+
+    // 每次查房本就該覆蓋昨天的報告，故不納入 CONFLICT_FIELDS
+    if (briefing) merged.briefing = briefing;
+
+    // 用字漂移（標點、空白、大小寫）不算變化。診斷已錨定 progress note 的 problem list，
+    // 正規化後仍不同 = problem list 真的改了，才值得攔下來問。
+    for (const { field } of CONFLICT_FIELDS) {
+      const incoming = parsed[field];
+      const current = patient[field];
+      if (incoming !== undefined && current && normalizeDx(current) === normalizeDx(incoming)) {
+        (merged as any)[field] = current;   // 保留原本字串，避免每天被改寫
       }
     }
 
@@ -325,7 +415,7 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
       .filter(({ field }) =>
         parsed[field] !== undefined &&
         patient[field] &&
-        patient[field] !== parsed[field]
+        normalizeDx(patient[field]) !== normalizeDx(parsed[field])
       )
       .map(({ field, label }) => ({
         field, label,
@@ -561,28 +651,54 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
         </div>
       </div>
 
-      {/* ═══ Collapsible sections ═══ */}
+      {/* ═══ Tabs ═══ */}
       <div className="space-y-3">
 
-        {/* ── 用藥 ── */}
-        <div className="bg-white rounded-2xl border border-natural-200 shadow-sm overflow-hidden">
-          <div className="flex items-center">
-            <button onClick={() => toggleSection('med')} className="flex-1 flex items-center gap-2.5 px-5 py-3.5 text-left hover:bg-natural-50 transition-colors">
-              <Pill className="w-3.5 h-3.5 text-sage-500" />
-              <span className="text-xs font-bold text-natural-600 uppercase tracking-widest">用藥</span>
-              {(() => { const n = (patient.medications || []).filter(m => !m.endDate).length; return n > 0 ? <span className="text-[10px] bg-natural-100 text-natural-400 px-1.5 py-0.5 rounded-full font-bold">{n}</span> : null; })()}
-              <ChevronDown className={`w-3.5 h-3.5 text-natural-300 ml-auto transition-transform duration-200 ${openSections.has('med') ? 'rotate-180' : ''}`} />
+        <div className="flex gap-1 overflow-x-auto no-scrollbar border-b border-natural-200">
+          {TABS.filter(t => t.key !== 'briefing' || patient.briefing).map(t => (
+            <button
+              key={t.key}
+              onClick={() => setActiveTab(t.key)}
+              className={`flex items-center gap-2 px-4 py-2.5 whitespace-nowrap text-xs font-bold uppercase tracking-widest border-b-2 -mb-px transition-colors ${
+                activeTab === t.key
+                  ? 'border-sage-500 text-natural-800'
+                  : 'border-transparent text-natural-400 hover:text-natural-600'
+              }`}
+            >
+              {t.icon}
+              {t.label}
+              {t.badge?.(patient)}
             </button>
-            {openSections.has('med') && (
-              <button onClick={openAddMed} className="px-4 py-3.5 text-xs font-bold text-sage-600 hover:bg-sage-50 transition-colors border-l border-natural-100 shrink-0 flex items-center gap-1">
+          ))}
+        </div>
+
+        {/* ── 交班報告 ── */}
+        {activeTab === 'briefing' && patient.briefing && (
+          <div className="bg-white rounded-2xl border border-natural-200 shadow-sm overflow-hidden">
+            <div className="flex justify-end">
+              <button
+                onClick={() => { navigator.clipboard.writeText(patient.briefing || ''); setBriefingCopied(true); setTimeout(() => setBriefingCopied(false), 1500); }}
+                className="px-4 py-3 text-xs font-bold text-sage-600 hover:bg-sage-50 transition-colors flex items-center gap-1"
+              >
+                {briefingCopied ? <CheckIcon className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                {briefingCopied ? '已複製' : '複製'}
+              </button>
+            </div>
+            <div className="px-5 pb-4 border-t border-natural-50 pt-3">
+              <Markdown text={patient.briefing} />
+            </div>
+          </div>
+        )}
+
+        {/* ── 用藥 ── */}
+        {activeTab === 'med' && (
+          <div className="bg-white rounded-2xl border border-natural-200 shadow-sm overflow-hidden">
+            <div className="flex justify-end">
+              <button onClick={openAddMed} className="px-4 py-3 text-xs font-bold text-sage-600 hover:bg-sage-50 transition-colors flex items-center gap-1">
                 <Plus className="w-3.5 h-3.5" /> 新增
               </button>
-            )}
-          </div>
-          <AnimatePresence>
-            {openSections.has('med') && (
-              <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} transition={{ duration: 0.18 }} className="overflow-hidden">
-                <div className="px-5 pb-4 pt-3 border-t border-natural-50">
+            </div>
+            <div className="px-5 pb-4 pt-3 border-t border-natural-50">
                   {(() => {
                     const meds = patient.medications || [];
                     const active = meds.filter(m => !m.endDate);
@@ -628,31 +744,19 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
                       </div>
                     );
                   })()}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+            </div>
+          </div>
+        )}
 
         {/* ── 檢驗 ── */}
-        <div className="bg-white rounded-2xl border border-natural-200 shadow-sm overflow-hidden">
-          <div className="flex items-center">
-            <button onClick={() => toggleSection('lab')} className="flex-1 flex items-center gap-2.5 px-5 py-3.5 text-left hover:bg-natural-50 transition-colors">
-              <FlaskConical className="w-3.5 h-3.5 text-clinical-500" />
-              <span className="text-xs font-bold text-natural-600 uppercase tracking-widest">檢驗</span>
-              {(() => { const n = (patient.labTests || []).filter(l => l.isAbnormal).length; return n > 0 ? <span className="text-[10px] bg-terracotta-50 text-terracotta-500 px-1.5 py-0.5 rounded-full font-bold">⚠ {n}</span> : null; })()}
-              <ChevronDown className={`w-3.5 h-3.5 text-natural-300 ml-auto transition-transform duration-200 ${openSections.has('lab') ? 'rotate-180' : ''}`} />
-            </button>
-            {openSections.has('lab') && (
-              <button onClick={openAddLab} className="px-4 py-3.5 text-xs font-bold text-sage-600 hover:bg-sage-50 transition-colors border-l border-natural-100 shrink-0 flex items-center gap-1">
+        {activeTab === 'lab' && (
+          <div className="bg-white rounded-2xl border border-natural-200 shadow-sm overflow-hidden">
+            <div className="flex justify-end">
+              <button onClick={openAddLab} className="px-4 py-3 text-xs font-bold text-sage-600 hover:bg-sage-50 transition-colors flex items-center gap-1">
                 <Plus className="w-3.5 h-3.5" /> 新增
               </button>
-            )}
-          </div>
-          <AnimatePresence>
-            {openSections.has('lab') && (
-              <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} transition={{ duration: 0.18 }} className="overflow-hidden">
-                <div className="px-5 pb-4 pt-3 border-t border-natural-50">
+            </div>
+            <div className="px-5 pb-4 pt-3 border-t border-natural-50">
                   {(() => {
                     const labs = patient.labTests || [];
                     const pending = labs.filter(l => l.status === 'pending');
@@ -671,9 +775,13 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
                         )}
                         {displayed.length === 0 && <p className="text-xs text-natural-300 italic py-2">{showPendingOnly ? '無待報告項目' : '尚無檢驗紀錄'}</p>}
                         {displayed.length > 0 && (() => {
+                          // 匯入的 category 可能不在 LAB_CATEGORIES（如 AI 給了 RFT/LFT），
+                          // 未知分類一律歸入「其他」，否則會整筆從畫面上消失
+                          const catOf = (l: LabTest) =>
+                            LAB_CATEGORIES.includes(l.category as typeof LAB_CATEGORIES[number]) ? l.category! : '其他';
                           const grouped = LAB_CATEGORIES
                             .map(cat => {
-                              const catItems = displayed.filter(l => (l.category || '其他') === cat);
+                              const catItems = displayed.filter(l => catOf(l) === cat);
                               if (!catItems.length) return null;
                               const testNames = [...new Set(catItems.map(l => l.name))];
                               const dates = [...new Set(catItems.map(l => l.orderedDate))].sort();
@@ -756,31 +864,19 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
                       </div>
                     );
                   })()}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+            </div>
+          </div>
+        )}
 
         {/* ── 檢查 ── */}
-        <div className="bg-white rounded-2xl border border-natural-200 shadow-sm overflow-hidden">
-          <div className="flex items-center">
-            <button onClick={() => toggleSection('exam')} className="flex-1 flex items-center gap-2.5 px-5 py-3.5 text-left hover:bg-natural-50 transition-colors">
-              <Scan className="w-3.5 h-3.5 text-natural-400" />
-              <span className="text-xs font-bold text-natural-600 uppercase tracking-widest">檢查</span>
-              {(() => { const n = (patient.examinations || []).filter(e => e.status === 'pending').length; return n > 0 ? <span className="text-[10px] bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded-full font-bold">待 {n}</span> : null; })()}
-              <ChevronDown className={`w-3.5 h-3.5 text-natural-300 ml-auto transition-transform duration-200 ${openSections.has('exam') ? 'rotate-180' : ''}`} />
-            </button>
-            {openSections.has('exam') && (
-              <button onClick={openAddExam} className="px-4 py-3.5 text-xs font-bold text-sage-600 hover:bg-sage-50 transition-colors border-l border-natural-100 shrink-0 flex items-center gap-1">
+        {activeTab === 'exam' && (
+          <div className="bg-white rounded-2xl border border-natural-200 shadow-sm overflow-hidden">
+            <div className="flex justify-end">
+              <button onClick={openAddExam} className="px-4 py-3 text-xs font-bold text-sage-600 hover:bg-sage-50 transition-colors flex items-center gap-1">
                 <Plus className="w-3.5 h-3.5" /> 新增
               </button>
-            )}
-          </div>
-          <AnimatePresence>
-            {openSections.has('exam') && (
-              <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} transition={{ duration: 0.18 }} className="overflow-hidden">
-                <div className="px-5 pb-4 pt-3 border-t border-natural-50">
+            </div>
+            <div className="px-5 pb-4 pt-3 border-t border-natural-50">
                   {(() => {
                     const exams = patient.examinations || [];
                     return (
@@ -809,33 +905,19 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
                       </div>
                     );
                   })()}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+            </div>
+          </div>
+        )}
 
         {/* ── Daily Rounds ── */}
-        <div className="bg-white rounded-2xl border border-natural-200 shadow-sm overflow-hidden">
-          <div className="flex items-center">
-            <button onClick={() => toggleSection('rounds')} className="flex-1 flex items-center gap-2.5 px-5 py-3.5 text-left hover:bg-natural-50 transition-colors">
-              <ClipboardList className="w-3.5 h-3.5 text-sage-500" />
-              <span className="text-xs font-bold text-natural-600 uppercase tracking-widest">Daily Rounds</span>
-              {(patient.dailyChecks?.length ?? 0) > 0 && (
-                <span className="text-[10px] bg-natural-100 text-natural-400 px-1.5 py-0.5 rounded-full font-bold">{patient.dailyChecks.length}</span>
-              )}
-              <ChevronDown className={`w-3.5 h-3.5 text-natural-300 ml-auto transition-transform duration-200 ${openSections.has('rounds') ? 'rotate-180' : ''}`} />
-            </button>
-            {openSections.has('rounds') && (
-              <button onClick={() => setShowChecklistForm(true)} className="px-4 py-3.5 text-xs font-bold text-sage-600 hover:bg-sage-50 transition-colors border-l border-natural-100 shrink-0 flex items-center gap-1">
+        {activeTab === 'rounds' && (
+          <div className="bg-white rounded-2xl border border-natural-200 shadow-sm overflow-hidden">
+            <div className="flex justify-end">
+              <button onClick={() => setShowChecklistForm(true)} className="px-4 py-3 text-xs font-bold text-sage-600 hover:bg-sage-50 transition-colors flex items-center gap-1">
                 <Plus className="w-3.5 h-3.5" /> 新增
               </button>
-            )}
-          </div>
-          <AnimatePresence>
-            {openSections.has('rounds') && (
-              <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} transition={{ duration: 0.18 }} className="overflow-hidden">
-                <div className="px-5 pb-5 pt-3 border-t border-natural-50 space-y-4">
+            </div>
+            <div className="px-5 pb-5 pt-3 border-t border-natural-50 space-y-4">
                   {showChecklistForm && (
                     <DailyChecklistForm onCancel={() => setShowChecklistForm(false)} onSubmit={handleAddCheck} />
                   )}
@@ -939,58 +1021,59 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
                                     </button>
 
                                     <div className="grid grid-cols-4 gap-2">
-                                      {([
-                                        {
-                                          key: 'bleeding', label: 'Bleeding', iconBg: 'bg-red-50',
-                                          icon: <Droplets className="w-3.5 h-3.5 text-red-400" />,
-                                          el: <select value={check.bleeding} onChange={e => handleCheckFieldUpdate(check.id, 'bleeding', e.target.value)} className={`bg-transparent text-xs font-bold focus:outline-hidden cursor-pointer ${check.bleeding !== 'None' ? 'text-red-600' : 'text-natural-800'}`}>{['None','Minor','Significant'].map(o=><option key={o}>{o}</option>)}</select>,
-                                        },
-                                        {
-                                          key: 'airway', label: 'Airway', iconBg: 'bg-sky-50',
-                                          icon: <Wind className="w-3.5 h-3.5 text-sky-400" />,
-                                          el: <select value={check.airway} onChange={e => handleCheckFieldUpdate(check.id, 'airway', e.target.value)} className={`bg-transparent text-xs font-bold focus:outline-hidden cursor-pointer ${check.airway !== 'Clear' ? 'text-red-600' : 'text-natural-800'}`}>{['Clear','Stridor','Obstructed'].map(o=><option key={o}>{o}</option>)}</select>,
-                                        },
-                                        {
-                                          key: 'temp', label: 'Temp', iconBg: 'bg-orange-50',
-                                          icon: <Thermometer className="w-3.5 h-3.5 text-orange-400" />,
-                                          el: <span className="flex items-baseline gap-0.5"><input type="number" value={check.fever} step={0.1} onChange={e => handleCheckFieldUpdate(check.id, 'fever', parseFloat(e.target.value)||0)} className={`w-12 bg-transparent text-xs font-bold focus:outline-hidden ${check.fever > 38 ? 'text-orange-600' : 'text-natural-800'}`} /><span className="text-[9px] text-natural-400">°C</span></span>,
-                                        },
-                                        {
-                                          key: 'drain', label: 'Drain', iconBg: 'bg-blue-50',
-                                          icon: <Droplets className="w-3.5 h-3.5 text-blue-400" />,
-                                          el: <span className="flex items-baseline gap-0.5"><input type="number" value={check.drainAmount} onChange={e => handleCheckFieldUpdate(check.id, 'drainAmount', parseInt(e.target.value)||0)} className="w-12 bg-transparent text-xs font-bold text-natural-800 focus:outline-hidden" /><span className="text-[9px] text-natural-400">cc</span></span>,
-                                        },
-                                        {
-                                          key: 'swallow', label: 'Swallow', iconBg: 'bg-emerald-50',
-                                          icon: <Activity className="w-3.5 h-3.5 text-emerald-500" />,
-                                          el: <select value={check.swallowing} onChange={e => handleCheckFieldUpdate(check.id, 'swallowing', e.target.value)} className={`bg-transparent text-xs font-bold focus:outline-hidden cursor-pointer ${check.swallowing !== 'Normal' ? 'text-red-600' : 'text-natural-800'}`}>{['Normal','Dysphagia','NPO'].map(o=><option key={o}>{o}</option>)}</select>,
-                                        },
-                                        {
-                                          key: 'cnnvii', label: 'CN VII', iconBg: 'bg-violet-50',
-                                          icon: <User className="w-3.5 h-3.5 text-violet-400" />,
-                                          el: <select value={check.facialNerve} onChange={e => handleCheckFieldUpdate(check.id, 'facialNerve', e.target.value)} className={`bg-transparent text-xs font-bold focus:outline-hidden cursor-pointer ${check.facialNerve !== 'Intact' ? 'text-red-600' : 'text-natural-800'}`}>{['Intact','Paresis','Paralysis'].map(o=><option key={o}>{o}</option>)}</select>,
-                                        },
-                                        {
-                                          key: 'pain', label: 'Pain', iconBg: 'bg-rose-50',
-                                          icon: <CloudLightning className="w-3.5 h-3.5 text-rose-400" />,
-                                          el: <span className="flex items-baseline gap-0.5"><input type="number" value={check.painLevel} min={0} max={10} onChange={e => handleCheckFieldUpdate(check.id, 'painLevel', parseInt(e.target.value)||0)} className={`w-8 bg-transparent text-xs font-bold focus:outline-hidden ${check.painLevel > 6 ? 'text-rose-600' : 'text-natural-800'}`} /><span className="text-[9px] text-natural-400">/10</span></span>,
-                                        },
-                                        {
-                                          key: 'hoarse', label: 'Hoarse', iconBg: 'bg-amber-50',
-                                          icon: <Volume2 className="w-3.5 h-3.5 text-amber-400" />,
-                                          el: <select value={check.hoarseness ? 'Yes' : 'No'} onChange={e => handleCheckFieldUpdate(check.id, 'hoarseness', e.target.value === 'Yes')} className={`bg-transparent text-xs font-bold focus:outline-hidden cursor-pointer ${check.hoarseness ? 'text-amber-600' : 'text-natural-800'}`}>{['No','Yes'].map(o=><option key={o}>{o}</option>)}</select>,
-                                        },
-                                      ] as {key:string, label:string, iconBg:string, icon:React.ReactNode, el:React.ReactNode}[]).map(({key, label, iconBg, icon, el}) => (
-                                        <div key={key} className="flex items-center gap-2 p-2.5 rounded-xl bg-white border border-natural-100 shadow-xs">
-                                          <div className={`w-7 h-7 rounded-lg ${iconBg} flex items-center justify-center shrink-0`}>
-                                            {icon}
+                                      {CHECK_FIELDS.filter(f => check[f.key] !== undefined).map(f => {
+                                        const raw = check[f.key] as string | number | boolean | undefined;
+                                        const isBool = typeof f.add === 'boolean';
+                                        const shown = isBool ? (raw ? 'Yes' : 'No') : raw;
+                                        const bad = f.options
+                                          ? (f.normal !== undefined && shown !== f.normal)
+                                          : (f.abnormal ? f.abnormal(raw as number) : false);
+                                        return (
+                                          <div key={f.key} className="flex items-center gap-2 p-2.5 rounded-xl bg-white border border-natural-100 shadow-xs group/tile">
+                                            <div className={`w-7 h-7 rounded-lg ${f.iconBg} flex items-center justify-center shrink-0`}>{f.icon}</div>
+                                            <div className="flex flex-col min-w-0 flex-1">
+                                              <span className="text-[9px] font-bold text-natural-400 uppercase tracking-wider leading-none mb-0.5">{f.label}</span>
+                                              {f.options ? (
+                                                <select
+                                                  value={shown as string}
+                                                  onChange={e => handleCheckFieldUpdate(check.id, f.key, isBool ? e.target.value === 'Yes' : e.target.value)}
+                                                  className={`bg-transparent text-xs font-bold focus:outline-hidden cursor-pointer ${bad ? 'text-red-600' : 'text-natural-800'}`}
+                                                >
+                                                  {f.options.map(o => <option key={o}>{o}</option>)}
+                                                </select>
+                                              ) : (
+                                                <span className="flex items-baseline gap-0.5">
+                                                  <input
+                                                    type="number" step={f.step} value={raw as number}
+                                                    onChange={e => handleCheckFieldUpdate(check.id, f.key, e.target.value === '' ? undefined : parseFloat(e.target.value))}
+                                                    className={`w-12 bg-transparent text-xs font-bold focus:outline-hidden ${bad ? 'text-red-600' : 'text-natural-800'}`}
+                                                  />
+                                                  <span className="text-[9px] text-natural-400">{f.unit}</span>
+                                                </span>
+                                              )}
+                                            </div>
+                                            <button
+                                              onClick={() => handleCheckFieldUpdate(check.id, f.key, undefined)}
+                                              title="標為未評估"
+                                              className="p-1 text-natural-200 hover:text-terracotta-500 opacity-0 group-hover/tile:opacity-100 transition-all shrink-0"
+                                            >
+                                              <X className="w-3 h-3" />
+                                            </button>
                                           </div>
-                                          <div className="flex flex-col min-w-0">
-                                            <span className="text-[9px] font-bold text-natural-400 uppercase tracking-wider leading-none mb-0.5">{label}</span>
-                                            {el}
-                                          </div>
-                                        </div>
-                                      ))}
+                                        );
+                                      })}
+                                      {CHECK_FIELDS.some(f => check[f.key] === undefined) && (
+                                        <select
+                                          value=""
+                                          onChange={e => { const f = CHECK_FIELDS.find(x => x.key === e.target.value); if (f) handleCheckFieldUpdate(check.id, f.key, f.add); }}
+                                          className="text-[10px] font-bold text-natural-400 bg-natural-50 border border-dashed border-natural-200 rounded-xl px-2 py-2.5 cursor-pointer hover:border-sage-400 hover:text-sage-600 transition-colors focus:outline-hidden"
+                                        >
+                                          <option value="">＋ 評估項目</option>
+                                          {CHECK_FIELDS.filter(f => check[f.key] === undefined).map(f => (
+                                            <option key={f.key} value={f.key}>{f.label}</option>
+                                          ))}
+                                        </select>
+                                      )}
                                     </div>
 
                                     <div className="flex-1 shrink-0 pt-6 lg:pt-0 lg:pl-8 lg:border-l border-natural-100 max-w-md">
@@ -1007,7 +1090,7 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
                                         </button>
                                       </div>
                                       <ul className="space-y-2">
-                                        {(normalizeNotes(check.notes)).map((noteRaw, idx) => {
+                                        {(normalizeNotes(check.notes)).map((noteRaw, idx, notes) => {
                                           const note = typeof noteRaw === 'string' ? { text: noteRaw, completed: false } : noteRaw;
                                           return (
                                             <li
@@ -1026,7 +1109,7 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
                                                 </button>
                                                 <button
                                                   onClick={(e) => { e.stopPropagation(); handleMoveNote(check.id, idx, 'down'); }}
-                                                  disabled={idx === check.notes.length - 1}
+                                                  disabled={idx === notes.length - 1}
                                                   className="p-0.5 hover:bg-natural-100 rounded disabled:opacity-0 text-natural-400 hover:text-sage-600"
                                                 >
                                                   <ChevronDown className="w-3 h-3" />
@@ -1080,11 +1163,9 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
                       </div>
                     </>
                   )}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+            </div>
+          </div>
+        )}
 
       </div>
 
@@ -1180,7 +1261,8 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
                 <>
                   <div className="flex items-center justify-between bg-natural-50 border border-natural-200 rounded-xl px-4 py-3">
                     <p className="text-xs text-natural-500 leading-relaxed">
-                      先複製 Prompt 給院內 AI，再將回傳的 JSON 貼入下方。<br/>
+                      查房交班報告可<strong>整份貼上</strong>（含 {BRIEFING_SENTINEL} 之前的 Markdown）；<br/>
+                      也可只貼純 JSON —— 先複製右側 Prompt 給院內 AI，再貼回傳結果。<br/>
                       <span className="text-natural-400">基本資料（姓名、床號等）已由截圖匯入，此處只需臨床內容。</span>
                     </p>
                     <button
