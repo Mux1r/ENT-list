@@ -13,19 +13,44 @@
   --color-natural-400: #a69d91;
   --color-natural-500: #8b857a;
   --color-natural-600: #4a453e;
+  --color-natural-700: #3e3a34;
+  --color-natural-800: #35312c;
   --color-natural-900: #2d2a26;
 
   --color-sage-50: #f4f6f3;
   --color-sage-100: #e9ede7;
+  --color-sage-200: #d5dcd1;
+  --color-sage-300: #bbc7b5;
+  --color-sage-400: #a1b09a;
   --color-sage-500: #8b9d83;
   --color-sage-600: #7a8c72;
   --color-sage-700: #5a6b54;
+  --color-sage-800: #46543f;
 
+  --color-terracotta-50: #fcf3f0;
+  --color-terracotta-100: #f6e2db;
+  --color-terracotta-200: #efc7ba;
+  --color-terracotta-400: #e0967f;
   --color-terracotta-500: #d67d61;
   --color-terracotta-600: #c56d51;
+  --color-terracotta-700: #a85941;
+  --color-terracotta-800: #8a4834;
   
+  --color-clay-400: #d4b9a6;
   --color-clay-500: #c5a18a;
+  --color-clay-600: #a8846d;
+
+  /* 莫蘭迪藍（男）＋ 莫蘭迪紅（女） */
+  --color-clinical-50: #eff3f6;
+  --color-clinical-100: #d9e2e9;
   --color-clinical-500: #8299ac;
+  --color-clinical-600: #6b8296;
+  --color-clinical-700: #566a7c;
+
+  --color-blush-50: #faf1f1;
+  --color-blush-100: #eeddde;
+  --color-blush-500: #c08a8a;
+  --color-blush-600: #a97374;
 }
 
 body {

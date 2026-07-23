@@ -6,15 +6,17 @@ import { motion, AnimatePresence } from 'motion/react';
 
 interface DailyChecklistFormProps {
   initialData?: ENTChecklist;
+  /** 要記錄哪一天（yyyy-MM-dd）；不給就是今天 */
+  day?: string;
   onSubmit: (check: ENTChecklist) => void;
   onCancel: () => void;
 }
 
-export default function DailyChecklistForm({ initialData, onSubmit, onCancel }: DailyChecklistFormProps) {
+export default function DailyChecklistForm({ initialData, day, onSubmit, onCancel }: DailyChecklistFormProps) {
   // 不預填任何評估值 —— 沒點過的項目維持 undefined（未評估），
   // 才不會把「沒看」記錄成「看了，正常」。
   const [formData, setFormData] = useState<Partial<ENTChecklist>>({
-    date: new Date().toISOString(),
+    date: day ? new Date(`${day}T${format(new Date(), 'HH:mm')}`).toISOString() : new Date().toISOString(),
     notes: [{ text: '', completed: false }]
   });
 
@@ -97,7 +99,7 @@ export default function DailyChecklistForm({ initialData, onSubmit, onCancel }: 
       animate={{ opacity: 1, height: 'auto' }}
       className="bg-white rounded-2xl border border-natural-200 shadow-xl overflow-hidden mb-8"
     >
-      <div className={`p-6 text-white flex justify-between items-center border-b transition-colors duration-500 ${initialData ? 'bg-sage-600 border-sage-700' : 'bg-sage-600 border-sage-700'}`}>
+      <div className={`p-4 sm:p-6 text-white flex justify-between items-center border-b transition-colors duration-500 ${initialData ? 'bg-sage-600 border-sage-700' : 'bg-sage-600 border-sage-700'}`}>
         <div>
           <h3 className="text-xl font-serif font-bold tracking-tight">
             {initialData ? 'Edit Ward Round Record' : 'Record Daily Evaluation'}
@@ -111,8 +113,8 @@ export default function DailyChecklistForm({ initialData, onSubmit, onCancel }: 
         </button>
       </div>
 
-      <form onSubmit={handleSubmit} className="p-8 space-y-8">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-natural-600">
+      <form onSubmit={handleSubmit} className="p-4 sm:p-8 space-y-6 sm:space-y-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 text-natural-600">
           {/* Column 1: Primary Vitals */}
           <div className="space-y-6">
              <div>
@@ -257,7 +259,7 @@ export default function DailyChecklistForm({ initialData, onSubmit, onCancel }: 
                        exit={{ opacity: 0, x: 10 }}
                        className="flex items-center gap-2 group"
                      >
-                       <div className="flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                       <div className="flex flex-col gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shrink-0">
                          <button 
                             type="button" 
                             onClick={() => moveNote(index, 'up')}
@@ -301,7 +303,7 @@ export default function DailyChecklistForm({ initialData, onSubmit, onCancel }: 
                        <button 
                         type="button"
                         onClick={() => removeNote(index)}
-                        className="p-2 text-natural-300 hover:text-terracotta-500 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-0"
+                        className="p-2 text-natural-300 hover:text-terracotta-500 transition-colors opacity-100 sm:opacity-0 sm:group-hover:opacity-100 disabled:opacity-10"
                         disabled={(formData.notes || []).length <= 1}
                        >
                          <Trash2 className="w-3.5 h-3.5" />

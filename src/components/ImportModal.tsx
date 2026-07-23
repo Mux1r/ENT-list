@@ -203,7 +203,7 @@ export default function ImportModal({ onImport, onCancel }: ImportModalProps) {
         animate={{ opacity: 1, scale: 1, y: 0 }}
         className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden border border-natural-200"
       >
-        <div className="bg-sage-600 p-6 text-white flex justify-between items-center">
+        <div className="bg-sage-600 p-4 sm:p-6 text-white flex justify-between items-center">
           <div className="flex items-center gap-3">
             <Clipboard className="w-6 h-6" />
             <div>
@@ -218,7 +218,7 @@ export default function ImportModal({ onImport, onCancel }: ImportModalProps) {
           </button>
         </div>
 
-        <div className="p-1 px-8 bg-natural-100 flex gap-4 border-b border-natural-200">
+        <div className="p-1 px-3 sm:px-8 bg-natural-100 flex gap-2 sm:gap-4 border-b border-natural-200 overflow-x-auto no-scrollbar">
           <button onClick={() => setImportMode('screenshot')} className={tabClass('screenshot')}>
             截圖匯入
           </button>
@@ -230,7 +230,7 @@ export default function ImportModal({ onImport, onCancel }: ImportModalProps) {
           </button>
         </div>
 
-        <div className="p-8 space-y-5">
+        <div className="p-4 sm:p-8 space-y-4 sm:space-y-5">
           {/* ── Screenshot tab ── */}
           {importMode === 'screenshot' && (
             <div className="space-y-4">
@@ -241,7 +241,7 @@ export default function ImportModal({ onImport, onCancel }: ImportModalProps) {
 
               {/* Drop zone */}
               <div
-                className="border-2 border-dashed border-natural-200 rounded-2xl p-8 text-center hover:border-sage-300 transition-colors bg-natural-50 relative group cursor-pointer"
+                className="border-2 border-dashed border-natural-200 rounded-2xl p-4 sm:p-8 text-center hover:border-sage-300 transition-colors bg-natural-50 relative group cursor-pointer"
                 onClick={() => imageInputRef.current?.click()}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={(e) => {

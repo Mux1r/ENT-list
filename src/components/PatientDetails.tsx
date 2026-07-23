@@ -22,9 +22,11 @@ import {
   Pill,
   FlaskConical,
   Scan,
+  Scissors,
   AlertTriangle,
   Ban,
   Edit3,
+  MoreVertical,
   Volume2
 } from 'lucide-react';
 import { Medication, LabTest, Examination } from '../types';
@@ -32,7 +34,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Patient, ENTChecklist } from '../types';
 import DailyChecklistForm from './DailyChecklistForm';
 import Markdown from './Markdown';
-import { format } from 'date-fns';
+import { format, differenceInCalendarDays, startOfWeek, addDays } from 'date-fns';
 
 const JSON_IMPORT_PROMPT = `你是一個醫療資料結構化助手。病患的基本資料（姓名、床號、病歷號、年齡、性別、入院日期）已建立，請根據我提供的病患臨床資訊，產出下列 JSON。
 
@@ -95,7 +97,6 @@ const stripPreamble = (md: string) => {
 type CheckFieldDef = {
   key: keyof ENTChecklist;
   label: string;
-  iconBg: string;
   icon: React.ReactNode;
   options?: string[];        // 有 options = 下拉；否則為數值
   normal?: string;           // 下拉之正常值，其餘標紅
@@ -105,39 +106,46 @@ type CheckFieldDef = {
   add: string | number | boolean;   // 從「未評估」新增時的起始值
 };
 
+const ICON_CLASS = 'w-3.5 h-3.5 text-natural-400';
+
 const CHECK_FIELDS: CheckFieldDef[] = [
-  { key: 'bleeding',     label: 'Bleeding', iconBg: 'bg-red-50',     icon: <Droplets className="w-3.5 h-3.5 text-red-400" />,        options: ['None', 'Minor', 'Significant'],          normal: 'None',    add: 'None' },
-  { key: 'airway',       label: 'Airway',   iconBg: 'bg-sky-50',     icon: <Wind className="w-3.5 h-3.5 text-sky-400" />,            options: ['Clear', 'Stridor', 'Obstructed'],        normal: 'Clear',   add: 'Clear' },
-  { key: 'fever',        label: 'Temp',     iconBg: 'bg-orange-50',  icon: <Thermometer className="w-3.5 h-3.5 text-orange-400" />,  unit: '°C',     step: 0.1, abnormal: v => v > 38,   add: 36.5 },
-  { key: 'drainAmount',  label: 'Drain',    iconBg: 'bg-blue-50',    icon: <Droplets className="w-3.5 h-3.5 text-blue-400" />,       unit: 'cc',                                          add: 0 },
-  { key: 'swallowing',   label: 'Swallow',  iconBg: 'bg-emerald-50', icon: <Activity className="w-3.5 h-3.5 text-emerald-500" />,    options: ['Normal', 'Dysphagia', 'NPO'],            normal: 'Normal',  add: 'Normal' },
-  { key: 'facialNerve',  label: 'CN VII',   iconBg: 'bg-violet-50',  icon: <User className="w-3.5 h-3.5 text-violet-400" />,         options: ['Intact', 'Paresis', 'Paralysis'],        normal: 'Intact',  add: 'Intact' },
-  { key: 'painLevel',    label: 'Pain',     iconBg: 'bg-rose-50',    icon: <CloudLightning className="w-3.5 h-3.5 text-rose-400" />, unit: '/10',               abnormal: v => v > 6,    add: 0 },
-  { key: 'hoarseness',   label: 'Hoarse',   iconBg: 'bg-amber-50',   icon: <Volume2 className="w-3.5 h-3.5 text-amber-400" />,       options: ['No', 'Yes'],                             normal: 'No',      add: false },
-  { key: 'woundStatus',  label: 'Wound',    iconBg: 'bg-amber-50',   icon: <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />, options: ['Clean', 'Hyperemia', 'Discharge'],       normal: 'Clean',   add: 'Clean' },
-  { key: 'flap',         label: 'Flap',     iconBg: 'bg-pink-50',    icon: <Scan className="w-3.5 h-3.5 text-pink-400" />,           options: ['Viable', 'Congested', 'Ischemic', 'Failed'], normal: 'Viable', add: 'Viable' },
-  { key: 'tracheostomy', label: 'Trach',    iconBg: 'bg-cyan-50',    icon: <Wind className="w-3.5 h-3.5 text-cyan-500" />,           options: ['In situ', 'Capped', 'Decannulated'],                        add: 'In situ' },
-  { key: 'calcium',      label: 'Ca',       iconBg: 'bg-teal-50',    icon: <FlaskConical className="w-3.5 h-3.5 text-teal-500" />,   unit: 'mg/dL', step: 0.1, abnormal: v => v < 8.5,  add: 9.0 },
+  { key: 'bleeding',     label: 'Bleeding', icon: <Droplets className={ICON_CLASS} />,        options: ['None', 'Minor', 'Significant'],          normal: 'None',    add: 'None' },
+  { key: 'airway',       label: 'Airway',   icon: <Wind className={ICON_CLASS} />,            options: ['Clear', 'Stridor', 'Obstructed'],        normal: 'Clear',   add: 'Clear' },
+  { key: 'fever',        label: 'Temp',     icon: <Thermometer className={ICON_CLASS} />,     unit: '°C',     step: 0.1, abnormal: v => v > 38,   add: 36.5 },
+  { key: 'drainAmount',  label: 'Drain',    icon: <Droplets className={ICON_CLASS} />,        unit: 'cc',                                          add: 0 },
+  { key: 'swallowing',   label: 'Swallow',  icon: <Activity className={ICON_CLASS} />,        options: ['Normal', 'Dysphagia', 'NPO'],            normal: 'Normal',  add: 'Normal' },
+  { key: 'facialNerve',  label: 'CN VII',   icon: <User className={ICON_CLASS} />,            options: ['Intact', 'Paresis', 'Paralysis'],        normal: 'Intact',  add: 'Intact' },
+  { key: 'painLevel',    label: 'Pain',     icon: <CloudLightning className={ICON_CLASS} />,  unit: '/10',               abnormal: v => v > 6,    add: 0 },
+  { key: 'hoarseness',   label: 'Hoarse',   icon: <Volume2 className={ICON_CLASS} />,         options: ['No', 'Yes'],                             normal: 'No',      add: false },
+  { key: 'woundStatus',  label: 'Wound',    icon: <AlertTriangle className={ICON_CLASS} />,   options: ['Clean', 'Hyperemia', 'Discharge'],       normal: 'Clean',   add: 'Clean' },
+  { key: 'flap',         label: 'Flap',     icon: <Scan className={ICON_CLASS} />,            options: ['Viable', 'Congested', 'Ischemic', 'Failed'], normal: 'Viable', add: 'Viable' },
+  { key: 'tracheostomy', label: 'Trach',    icon: <Wind className={ICON_CLASS} />,            options: ['In situ', 'Capped', 'Decannulated'],                        add: 'In situ' },
+  { key: 'calcium',      label: 'Ca',       icon: <FlaskConical className={ICON_CLASS} />,    unit: 'mg/dL', step: 0.1, abnormal: v => v < 8.5,  add: 9.0 },
 ];
 
 // 分頁。briefing 只在有交班報告時出現；badge 為各分頁的提醒數字。
-const TABS: { key: string; label: string; icon: React.ReactNode; badge?: (p: Patient) => React.ReactNode }[] = [
-  { key: 'briefing', label: '交班', icon: <FileText className="w-3.5 h-3.5" /> },
+// label 只當 tooltip/aria 用；tab 本身只顯示 icon + 右上角數量
+const TABS: { key: string; label: string; icon: React.ReactNode; count?: (p: Patient) => number; tone?: string }[] = [
+  { key: 'briefing', label: '交班', icon: <FileText className="w-4 h-4" /> },
   {
-    key: 'med', label: '用藥', icon: <Pill className="w-3.5 h-3.5" />,
-    badge: p => { const n = (p.medications || []).filter(m => !m.endDate).length; return n > 0 ? <span className="text-[10px] bg-natural-100 text-natural-400 px-1.5 py-0.5 rounded-full">{n}</span> : null; },
+    key: 'med', label: '用藥（使用中）', icon: <Pill className="w-4 h-4" />,
+    count: p => (p.medications || []).filter(m => !m.endDate).length,
+    tone: 'bg-natural-200 text-natural-600',
   },
   {
-    key: 'lab', label: '檢驗', icon: <FlaskConical className="w-3.5 h-3.5" />,
-    badge: p => { const n = (p.labTests || []).filter(l => l.isAbnormal).length; return n > 0 ? <span className="text-[10px] bg-terracotta-50 text-terracotta-500 px-1.5 py-0.5 rounded-full">⚠ {n}</span> : null; },
+    key: 'lab', label: '檢驗（異常）', icon: <FlaskConical className="w-4 h-4" />,
+    count: p => (p.labTests || []).filter(l => l.isAbnormal).length,
+    tone: 'bg-terracotta-500 text-white',
   },
   {
-    key: 'exam', label: '檢查', icon: <Scan className="w-3.5 h-3.5" />,
-    badge: p => { const n = (p.examinations || []).filter(e => e.status === 'pending').length; return n > 0 ? <span className="text-[10px] bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded-full">待 {n}</span> : null; },
+    key: 'exam', label: '檢查（待結果）', icon: <Scan className="w-4 h-4" />,
+    count: p => (p.examinations || []).filter(e => e.status === 'pending').length,
+    tone: 'bg-amber-500 text-white',
   },
   {
-    key: 'rounds', label: 'Daily Round', icon: <ClipboardList className="w-3.5 h-3.5" />,
-    badge: p => { const n = p.dailyChecks?.length ?? 0; return n > 0 ? <span className="text-[10px] bg-natural-100 text-natural-400 px-1.5 py-0.5 rounded-full">{n}</span> : null; },
+    key: 'rounds', label: 'Daily Round', icon: <ClipboardList className="w-4 h-4" />,
+    count: p => p.dailyChecks?.length ?? 0,
+    tone: 'bg-natural-200 text-natural-600',
   },
 ];
 
@@ -151,10 +159,17 @@ const STATUS_OPTIONS = [
 ] as const;
 
 const GENDER_OPTIONS = [
-  { value: 'Male',   label: 'M', triggerClass: 'bg-natural-50 text-natural-700 border-natural-200', dotColor: 'bg-blue-400' },
-  { value: 'Female', label: 'F', triggerClass: 'bg-natural-50 text-natural-700 border-natural-200', dotColor: 'bg-rose-400' },
-  { value: 'Other',  label: 'O', triggerClass: 'bg-natural-50 text-natural-700 border-natural-200', dotColor: 'bg-natural-400' },
+  { value: 'Male',   label: 'M', triggerClass: '', dotColor: 'bg-clinical-500' },
+  { value: 'Female', label: 'F', triggerClass: '', dotColor: 'bg-blush-500' },
+  { value: 'Other',  label: 'O', triggerClass: '', dotColor: 'bg-natural-400' },
 ] as const;
+
+// 性別改用床號底色表示
+const GENDER_TONE: Record<string, string> = {
+  Male: 'bg-clinical-50 text-clinical-700 border-clinical-100',
+  Female: 'bg-blush-50 text-blush-600 border-blush-100',
+  Other: 'bg-natural-100 text-natural-500 border-natural-200',
+};
 
 type ConflictItem = {
   field: keyof Patient;
@@ -177,6 +192,10 @@ interface PatientDetailsProps {
   patient: Patient;
   onUpdate: (patient: Patient) => void;
   onDelete: (id: string) => void;
+  /** 這兩個開關的按鈕在 App 的 topbar，state 也放在那裡 */
+  editHeader: boolean;
+  jsonOpen: boolean;
+  onCloseJson: () => void;
 }
 
 const normalizeNotes = (notes: ENTChecklist['notes'] | string | undefined): { text: string; completed: boolean }[] => {
@@ -185,12 +204,16 @@ const normalizeNotes = (notes: ENTChecklist['notes'] | string | undefined): { te
   return [];
 };
 
-export default function PatientDetails({ patient, onUpdate, onDelete }: PatientDetailsProps) {
+export default function PatientDetails({ patient, onUpdate, onDelete, editHeader, jsonOpen, onCloseJson }: PatientDetailsProps) {
   const [showChecklistForm, setShowChecklistForm] = useState(false);
   const [activeTab, setActiveTab] = useState('rounds');
-  const [currentCheckIndex, setCurrentCheckIndex] = useState(patient.dailyChecks.length > 0 ? patient.dailyChecks.length - 1 : 0);
-const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
-  const [showJsonModal, setShowJsonModal] = useState(false);
+  // 各分頁預設唯讀，按下鉛筆才露出編輯/刪除
+  const [editData, setEditData] = useState(false);
+  // 分頁共用的「哪一天」；檢驗/檢查是累積資料，不受它影響
+  const todayStr = format(new Date(), 'yyyy-MM-dd');
+  const [selectedDay, setSelectedDay] = useState(todayStr);
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const [showWeek, setShowWeek] = useState(false);
   const [jsonText, setJsonText] = useState('');
   const [jsonError, setJsonError] = useState('');
   const [promptCopied, setPromptCopied] = useState(false);
@@ -199,30 +222,26 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   const [pendingMerged, setPendingMerged] = useState<Patient | null>(null);
   const [checksInfo, setChecksInfo] = useState<{ added: number; updated: number } | null>(null);
 
-  const updateSelectedDate = (index: number) => {
-    setCurrentCheckIndex(index);
+  useEffect(() => { setEditData(false); setShowWeek(false); }, [activeTab, patient.id]);
+
+  // 日期一律取「日曆日」比對，避免 dailyChecks.date 帶時間造成差一天
+  const dayOf = (iso: string) => {
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? '' : format(d, 'yyyy-MM-dd');
+  };
+  const selectedCheck = patient.dailyChecks.find(c => dayOf(c.date) === selectedDay);
+
+  const pickDay = (day: string) => {
+    setSelectedDay(day);
+    setWeekStart(startOfWeek(new Date(day), { weekStartsOn: 1 }));
+    setShowWeek(false);
   };
 
-  const handleGoToLatest = () => {
-    if (patient.dailyChecks.length === 0) return;
-    updateSelectedDate(patient.dailyChecks.length - 1);
-  };
 
-  useEffect(() => {
-    setCurrentCheckIndex(patient.dailyChecks.length > 0 ? patient.dailyChecks.length - 1 : 0);
-  }, [patient.id]);
-
-  const handleNext = () => {
-    if (currentCheckIndex < patient.dailyChecks.length - 1) {
-      updateSelectedDate(currentCheckIndex + 1);
-    }
-  };
-
-  const handlePrev = () => {
-    if (currentCheckIndex > 0) {
-      updateSelectedDate(currentCheckIndex - 1);
-    }
-  };
+  // 手術當天 = POD 0；明天要開 = -1。用 T00:00 解析成當地午夜，跨時區不會差一天
+  const pod = patient.opDate
+    ? differenceInCalendarDays(new Date(), new Date(patient.opDate + 'T00:00'))
+    : null;
 
   const [localFields, setLocalFields] = useState({
     name: patient.name,
@@ -257,14 +276,16 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
     onUpdate({ ...patient, [field]: value });
   };
 
+  // 一天一筆，已有就不新增（避免覆蓋當天既有紀錄）
   const handleAddCheck = (newCheck: ENTChecklist) => {
-    const newChecks = [...patient.dailyChecks, newCheck];
-    onUpdate({
-      ...patient,
-      dailyChecks: newChecks
-    });
+    const day = dayOf(newCheck.date);
+    if (patient.dailyChecks.some(c => dayOf(c.date) === day)) {
+      window.alert('這天已有查房紀錄，請直接編輯');
+      return;
+    }
+    onUpdate({ ...patient, dailyChecks: [...patient.dailyChecks, newCheck] });
     setShowChecklistForm(false);
-    setCurrentCheckIndex(newChecks.length - 1);
+    setSelectedDay(day);
   };
 
   const handleToggleNoteCompletion = (checkId: string, noteIndex: number) => {
@@ -324,7 +345,7 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
   };
 
   const closeJsonModal = () => {
-    setShowJsonModal(false);
+    onCloseJson();
     setJsonText('');
     setJsonError('');
     setConflicts([]);
@@ -461,7 +482,8 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
     applyMerged(resolved);
   };
 
-  const today = new Date().toISOString().split('T')[0];
+  // 新增資料一律預設在「目前選到的那天」
+  const today = selectedDay;
   const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
 
   // Medications
@@ -505,7 +527,12 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
     setStoppingMedId(null);
     setStopReason('');
   };
-  const deleteMed = (id: string) => {
+  // 某一天在用的藥＝已開始且尚未停用。用藥本身就是區間資料，不需要每天複製一份
+  const medsOnDay = (day: string) =>
+    (patient.medications || []).filter(m => (!m.startDate || m.startDate <= day) && (!m.endDate || m.endDate >= day));
+
+  const deleteMed = (id: string, name: string) => {
+    if (!window.confirm(`刪除用藥「${name}」？`)) return;
     onUpdate({ ...patient, medications: (patient.medications || []).filter(m => m.id !== id) });
   };
 
@@ -535,7 +562,8 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
     onUpdate({ ...patient, labTests: labs });
     setShowLabModal(false);
   };
-  const deleteLab = (id: string) => {
+  const deleteLab = (id: string, name: string) => {
+    if (!window.confirm(`刪除檢驗「${name}」？`)) return;
     onUpdate({ ...patient, labTests: (patient.labTests || []).filter(l => l.id !== id) });
   };
 
@@ -563,69 +591,148 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
     onUpdate({ ...patient, examinations: exams });
     setShowExamModal(false);
   };
-  const deleteExam = (id: string) => {
+  const deleteExam = (id: string, name: string) => {
+    if (!window.confirm(`刪除檢查「${name}」？`)) return;
     onUpdate({ ...patient, examinations: (patient.examinations || []).filter(e => e.id !== id) });
   };
   // ───────────────────────────────────────────────────────────────
 
+  // 各分頁第一列：新增（圖示）· 日期 · 編輯開關。dayCount 為週曆上每一天的筆數，不給就不顯示數字
+  const tabBar = (onAdd: () => void, dayCount?: (day: string) => number) => {
+    const week = Array.from({ length: 7 }, (_, i) => format(addDays(weekStart, i), 'yyyy-MM-dd'));
+    return (
+      <>
+        <div className="flex items-center px-2 py-2">
+          <button onClick={onAdd} title="新增" className="p-2 rounded-lg text-sage-600 hover:bg-sage-50 transition-colors">
+            <Plus className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setShowWeek(v => !v)}
+            className={`flex-1 mx-1 py-1.5 rounded-lg text-xs font-bold uppercase tracking-widest transition-colors ${
+              showWeek ? 'bg-natural-100 text-natural-700' : 'text-natural-500 hover:bg-natural-50'
+            }`}
+          >
+            {selectedDay === todayStr ? 'Today' : format(new Date(selectedDay), 'MM/dd (EEE)')}
+          </button>
+          <button
+            onClick={() => setEditData(v => !v)}
+            title={editData ? '完成編輯' : '編輯'}
+            className={`p-2 rounded-lg transition-colors ${editData ? 'bg-sage-500 text-white' : 'text-natural-300 hover:text-sage-600 hover:bg-sage-50'}`}
+          >
+            {editData ? <CheckIcon className="w-4 h-4" /> : <Edit3 className="w-4 h-4" />}
+          </button>
+        </div>
+
+        {showWeek && (
+          <div className="border-t border-natural-100 bg-natural-50/60">
+            <div className="flex items-center justify-between px-2 sm:px-4 pt-2 sm:pt-3">
+              <button onClick={() => setWeekStart(addDays(weekStart, -7))} className="p-1.5 rounded-lg text-natural-300 hover:text-sage-600 hover:bg-white transition-colors">
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => pickDay(todayStr)}
+                className="text-[10px] font-bold uppercase tracking-widest text-natural-400 hover:text-sage-600 transition-colors"
+              >
+                {format(weekStart, 'MM/dd')} – {format(addDays(weekStart, 6), 'MM/dd')} · 今天
+              </button>
+              <button onClick={() => setWeekStart(addDays(weekStart, 7))} className="p-1.5 rounded-lg text-natural-300 hover:text-sage-600 hover:bg-white transition-colors">
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex justify-between gap-0.5 sm:gap-1 px-2 sm:px-4 pt-2 pb-4">
+              {week.map(day => {
+                const isPicked = day === selectedDay;
+                const n = dayCount?.(day);
+                return (
+                  <button key={day} onClick={() => pickDay(day)} className="flex flex-col items-center gap-1.5 flex-1 min-w-0 group">
+                    <span className={`text-[10px] font-bold uppercase tracking-widest ${isPicked ? 'text-sage-600' : 'text-natural-300'}`}>
+                      {format(new Date(day), 'EEE')}
+                    </span>
+                    <span
+                      className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-all ${
+                        isPicked
+                          ? 'bg-sage-500 border-sage-500 text-white shadow-sm'
+                          : `bg-white text-natural-500 group-hover:border-sage-300 ${day === todayStr ? 'border-sage-300' : 'border-natural-200'}`
+                      }`}
+                    >
+                      {format(new Date(day), 'd')}
+                    </span>
+                    {n !== undefined && (
+                      <span className={`text-[10px] font-bold ${n === 0 ? 'text-natural-200' : isPicked ? 'text-sage-600' : 'text-clay-500'}`}>
+                        {n === 0 ? '—' : n}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </>
+    );
+  };
 
   return (
     <div className="space-y-4 text-natural-600">
       {/* Patient Header Card */}
-      <div className="bg-white rounded-2xl px-5 py-4 border border-natural-200 shadow-sm space-y-2">
+      <div className="bg-white rounded-2xl px-3 sm:px-5 py-3 sm:py-4 border border-natural-200 shadow-sm space-y-2">
         {/* Row 1: bed · name · age · gender · status dot · actions */}
-        <div className="flex items-center gap-2.5 flex-wrap">
+        <div className="flex items-start gap-1">
+          {/* 欄位自己換行，右側動作永遠留在第一行 */}
+          <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap flex-1 min-w-0">
           <input
             value={localFields.bedNumber}
+            disabled={!editHeader}
             onChange={(e) => handleLocalChange('bedNumber', e.target.value)}
             onBlur={() => syncField('bedNumber', localFields.bedNumber)}
-            className="px-2 py-0.5 rounded bg-sage-50 text-sage-600 border border-sage-100 text-xs font-bold uppercase tracking-wider focus:ring-1 focus:ring-sage-500 focus:outline-hidden [field-sizing:content] min-w-[32px]"
+            className={`px-2 py-0.5 rounded border text-xs font-bold uppercase tracking-wider focus:ring-1 focus:ring-sage-500 focus:outline-hidden [field-sizing:content] min-w-[32px] ${GENDER_TONE[patient.gender] ?? GENDER_TONE.Other}`}
           />
           <input
             value={localFields.name}
+            disabled={!editHeader}
             onChange={(e) => handleLocalChange('name', e.target.value)}
             onBlur={() => syncField('name', localFields.name)}
             placeholder="病患姓名"
-            className="text-lg font-bold text-natural-900 bg-transparent border-b border-transparent hover:border-natural-200 focus:border-sage-500 focus:outline-hidden [field-sizing:content] min-w-[80px]"
+            className={`text-lg text-natural-900 bg-transparent border-b focus:border-sage-500 focus:outline-hidden [field-sizing:content] min-w-[80px] ${editHeader ? 'border-natural-200' : 'border-transparent'}`}
           />
-          <input
-            type="number"
-            value={localFields.age}
-            onChange={(e) => handleLocalChange('age', e.target.value)}
-            onBlur={() => syncField('age', parseInt(localFields.age) || 0)}
-            className="w-8 text-sm font-bold text-natural-500 bg-transparent border-b border-transparent hover:border-natural-200 focus:border-sage-500 focus:outline-hidden"
-          />
-          <DropdownSelect
-            value={patient.gender}
-            onChange={(v) => syncField('gender', v)}
-            options={GENDER_OPTIONS as unknown as { value: string; label: string; triggerClass: string; dotColor: string }[]}
-          />
+          <span className="flex items-baseline gap-0.5">
+            <input
+              type="number"
+              value={localFields.age}
+              disabled={!editHeader}
+              onChange={(e) => handleLocalChange('age', e.target.value)}
+              onBlur={() => syncField('age', parseInt(localFields.age) || 0)}
+              className={`[field-sizing:content] min-w-[20px] text-sm font-bold text-natural-500 bg-transparent border-b focus:border-sage-500 focus:outline-hidden text-right appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${editHeader ? 'border-natural-200' : 'border-transparent'}`}
+            />
+            {editHeader ? (
+              <DropdownSelect
+                value={patient.gender}
+                onChange={(v) => syncField('gender', v)}
+                options={GENDER_OPTIONS as unknown as { value: string; label: string; triggerClass: string; dotColor: string }[]}
+                bare
+              />
+            ) : (
+              <span className="text-sm font-bold text-natural-500">
+                {GENDER_OPTIONS.find(o => o.value === patient.gender)?.label ?? 'O'}
+              </span>
+            )}
+          </span>
+          <span className="w-1.5" />
           <DropdownSelect
             value={patient.status}
             onChange={(v) => syncField('status', v)}
             options={STATUS_OPTIONS as unknown as { value: string; label: string; triggerClass: string; dotColor: string }[]}
             compact
           />
-          <div className="ml-auto flex gap-1">
-            <button
-              onClick={() => { setShowJsonModal(true); setJsonError(''); setJsonText(''); }}
-              className="p-1.5 text-natural-300 hover:text-sage-600 transition-colors"
-              title="貼上 JSON 更新病患資料"
-            >
-              <ClipboardPaste className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => {
-                if (window.confirm('Are you sure you want to delete this patient profile? This action cannot be undone.')) {
-                  onDelete(patient.id);
-                }
-              }}
-              className="p-1.5 text-natural-200 hover:text-terracotta-500 transition-colors"
-              title="Delete Patient"
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
           </div>
+          {pod !== null && (
+            <span
+              className="shrink-0 self-start px-2 py-0.5 rounded-full border border-clay-400 text-clay-600 text-[10px] font-bold uppercase tracking-wider"
+              title={`手術日 ${patient.opDate}${patient.opProcedure ? `：${patient.opProcedure}` : ''}`}
+            >
+              POD {pod}
+            </span>
+          )}
         </div>
 
         {/* Row 2: diagnosis */}
@@ -635,27 +742,33 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
           onBlur={() => syncField('diagnosis', localFields.diagnosis)}
           rows={2}
           placeholder="入院診斷…"
-          className="w-full text-sm text-natural-700 bg-transparent resize-none focus:outline-hidden leading-relaxed placeholder-natural-200"
+          className="w-full text-sm font-bold text-natural-700 bg-transparent resize-none focus:outline-hidden leading-relaxed placeholder-natural-200"
         />
 
-        {/* Row 3: meta */}
-        <div className="flex items-center gap-2 text-xs text-natural-400">
-          <input
-            value={localFields.chartNumber}
-            onChange={(e) => handleLocalChange('chartNumber', e.target.value)}
-            onBlur={() => syncField('chartNumber', localFields.chartNumber)}
-            className="font-mono font-bold text-natural-400 bg-transparent border-b border-transparent hover:border-natural-200 focus:border-sage-500 focus:outline-hidden [field-sizing:content] min-w-[56px]"
-          />
-          <span className="text-natural-200">·</span>
-          <input
-            type="date"
-            value={localFields.admissionDate}
-            onChange={(e) => handleLocalChange('admissionDate', e.target.value)}
-            onBlur={() => syncField('admissionDate', localFields.admissionDate)}
-            className="font-bold text-natural-400 bg-transparent border-b border-transparent hover:border-natural-200 focus:border-sage-500 focus:outline-hidden w-auto"
-          />
-          <span className="text-natural-200">·</span>
-          <span className="text-[10px] font-bold uppercase tracking-widest text-natural-300 shrink-0">OP</span>
+        {/* Row 3: 病歷號 / 入院日，只在編輯時單獨一行 */}
+        {editHeader && (
+          <div className="flex items-center flex-wrap gap-x-2 gap-y-1 text-xs text-natural-400">
+            <input
+              value={localFields.chartNumber}
+              onChange={(e) => handleLocalChange('chartNumber', e.target.value)}
+              onBlur={() => syncField('chartNumber', localFields.chartNumber)}
+              className="font-mono font-bold text-natural-400 bg-transparent border-b border-natural-200 focus:border-sage-500 focus:outline-hidden [field-sizing:content] min-w-[56px]"
+            />
+            <span className="text-natural-200">·</span>
+            <input
+              type="date"
+              value={localFields.admissionDate}
+              onChange={(e) => handleLocalChange('admissionDate', e.target.value)}
+              onBlur={() => syncField('admissionDate', localFields.admissionDate)}
+              className="font-bold text-natural-400 bg-transparent border-b border-natural-200 focus:border-sage-500 focus:outline-hidden w-auto"
+            />
+          </div>
+        )}
+
+        {/* Row 4: OP */}
+        <div className="flex items-center flex-wrap gap-x-2 gap-y-1 text-xs text-natural-400">
+          <Scissors className="w-3.5 h-3.5 text-clay-600 shrink-0" />
+          <span className="sr-only">OP</span>
           <input
             type="date"
             value={localFields.opDate}
@@ -668,7 +781,7 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
             onChange={(e) => handleLocalChange('opProcedure', e.target.value)}
             onBlur={() => syncField('opProcedure', localFields.opProcedure)}
             placeholder="術式…"
-            className="flex-1 min-w-0 text-natural-400 bg-transparent border-b border-transparent hover:border-natural-200 focus:border-sage-500 focus:outline-hidden placeholder-natural-200"
+            className="flex-1 min-w-[120px] text-natural-400 bg-transparent border-b border-transparent hover:border-natural-200 focus:border-sage-500 focus:outline-hidden placeholder-natural-200"
           />
         </div>
       </div>
@@ -676,22 +789,30 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
       {/* ═══ Tabs ═══ */}
       <div className="space-y-3">
 
-        <div className="flex gap-1 overflow-x-auto no-scrollbar border-b border-natural-200">
-          {TABS.filter(t => t.key !== 'briefing' || patient.briefing).map(t => (
-            <button
-              key={t.key}
-              onClick={() => setActiveTab(t.key)}
-              className={`flex items-center gap-2 px-4 py-2.5 whitespace-nowrap text-xs font-bold uppercase tracking-widest border-b-2 -mb-px transition-colors ${
-                activeTab === t.key
-                  ? 'border-sage-500 text-natural-800'
-                  : 'border-transparent text-natural-400 hover:text-natural-600'
-              }`}
-            >
-              {t.icon}
-              {t.label}
-              {t.badge?.(patient)}
-            </button>
-          ))}
+        <div className="flex border-b border-natural-200">
+          {TABS.filter(t => t.key !== 'briefing' || patient.briefing).map(t => {
+            const n = t.count?.(patient) ?? 0;
+            return (
+              <button
+                key={t.key}
+                onClick={() => setActiveTab(t.key)}
+                title={t.label}
+                aria-label={t.label}
+                className={`relative flex-1 flex items-center justify-center py-3 border-b-2 -mb-px transition-colors ${
+                  activeTab === t.key
+                    ? 'border-sage-500 text-sage-600'
+                    : 'border-transparent text-natural-300 hover:text-natural-600'
+                }`}
+              >
+                {t.icon}
+                {n > 0 && (
+                  <span className={`absolute top-1.5 right-1/2 -mr-4 min-w-[16px] h-4 px-1 rounded-full text-[9px] font-bold flex items-center justify-center ${t.tone}`}>
+                    {n}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         {/* ── 交班報告 ── */}
@@ -706,7 +827,7 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
                 {briefingCopied ? '已複製' : '複製'}
               </button>
             </div>
-            <div className="px-5 pb-4 border-t border-natural-50 pt-3">
+            <div className="px-3 sm:px-5 pb-4 border-t border-natural-50 pt-3">
               <Markdown text={patient.briefing} />
             </div>
           </div>
@@ -715,19 +836,15 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
         {/* ── 用藥 ── */}
         {activeTab === 'med' && (
           <div className="bg-white rounded-2xl border border-natural-200 shadow-sm overflow-hidden">
-            <div className="flex justify-end">
-              <button onClick={openAddMed} className="px-4 py-3 text-xs font-bold text-sage-600 hover:bg-sage-50 transition-colors flex items-center gap-1">
-                <Plus className="w-3.5 h-3.5" /> 新增
-              </button>
-            </div>
-            <div className="px-5 pb-4 pt-3 border-t border-natural-50">
+            {tabBar(openAddMed, day => medsOnDay(day).length)}
+            <div className="px-3 sm:px-5 pb-4 pt-3 border-t border-natural-50">
                   {(() => {
                     const meds = patient.medications || [];
-                    const active = meds.filter(m => !m.endDate);
-                    const stopped = meds.filter(m => m.endDate);
+                    const active = medsOnDay(selectedDay);
+                    const stopped = meds.filter(m => m.endDate && m.endDate < selectedDay);
                     return (
                       <div className="space-y-3">
-                        {active.length === 0 && <p className="text-xs text-natural-300 italic py-2">尚無用藥紀錄</p>}
+                        {active.length === 0 && <p className="text-xs text-natural-300 italic py-2">這天沒有用藥</p>}
                         {active.map(med => (
                           <div key={med.id} className="flex items-center gap-3 p-3 bg-natural-50 rounded-xl border border-natural-100">
                             <Pill className="w-4 h-4 text-sage-500 shrink-0" />
@@ -735,10 +852,12 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
                               <span className="text-sm font-bold text-natural-900 shrink-0">{med.name}</span>
                               <span className="text-xs text-natural-400 truncate">{med.dose} · {med.frequency}{med.route ? ` · ${med.route}` : ''}</span>
                             </div>
-                            <div className="flex gap-1 shrink-0">
-                              <button onClick={() => openEditMed(med)} className="p-1.5 text-natural-300 hover:text-sage-500 transition-colors"><Edit3 className="w-3.5 h-3.5" /></button>
-                              <button onClick={() => { setStoppingMedId(med.id); setStopReason(''); }} className="p-1.5 text-natural-300 hover:text-terracotta-500 transition-colors" title="停用"><Ban className="w-3.5 h-3.5" /></button>
-                            </div>
+                            {editData && (
+                              <div className="flex gap-1 shrink-0">
+                                <button onClick={() => openEditMed(med)} className="p-1.5 text-natural-300 hover:text-sage-500 transition-colors"><Edit3 className="w-3.5 h-3.5" /></button>
+                                <button onClick={() => { setStoppingMedId(med.id); setStopReason(''); }} className="p-1.5 text-natural-300 hover:text-terracotta-500 transition-colors" title="停用"><Ban className="w-3.5 h-3.5" /></button>
+                              </div>
+                            )}
                           </div>
                         ))}
                         {stopped.length > 0 && (
@@ -756,7 +875,9 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
                                       <span className="text-sm font-bold text-natural-400 line-through shrink-0">{med.name}</span>
                                       <span className="text-xs text-natural-300 truncate">{med.dose} · {med.frequency}{med.route ? ` · ${med.route}` : ''}{med.stopReason ? ` ｜ ${med.stopReason}` : ''}</span>
                                     </div>
-                                    <button onClick={() => deleteMed(med.id)} className="p-1.5 text-natural-200 hover:text-terracotta-400 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                                    {editData && (
+                                      <button onClick={() => deleteMed(med.id, med.name)} className="p-1.5 text-natural-200 hover:text-terracotta-400 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                                    )}
                                   </div>
                                 ))}
                               </div>
@@ -773,12 +894,8 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
         {/* ── 檢驗 ── */}
         {activeTab === 'lab' && (
           <div className="bg-white rounded-2xl border border-natural-200 shadow-sm overflow-hidden">
-            <div className="flex justify-end">
-              <button onClick={openAddLab} className="px-4 py-3 text-xs font-bold text-sage-600 hover:bg-sage-50 transition-colors flex items-center gap-1">
-                <Plus className="w-3.5 h-3.5" /> 新增
-              </button>
-            </div>
-            <div className="px-5 pb-4 pt-3 border-t border-natural-50">
+            {tabBar(openAddLab, day => (patient.labTests || []).filter(l => (l.resultDate || l.orderedDate) === day).length)}
+            <div className="px-3 sm:px-5 pb-4 pt-3 border-t border-natural-50">
                   {(() => {
                     const labs = patient.labTests || [];
                     const pending = labs.filter(l => l.status === 'pending');
@@ -818,7 +935,7 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
 
                           const valColor = (lab: LabTest) =>
                             lab.abnormalDir === 'H' ? 'text-terracotta-600 font-bold' :
-                            lab.abnormalDir === 'L' ? 'text-blue-500 font-bold' :
+                            lab.abnormalDir === 'L' ? 'text-clinical-600 font-bold' :
                             lab.isAbnormal ? 'text-terracotta-600 font-bold' :
                             'text-natural-800 font-medium';
 
@@ -834,17 +951,19 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
                                           <th key={name} className="text-left py-1.5 px-3 font-bold text-natural-700 min-w-[64px] whitespace-nowrap">
                                             <div className="flex items-center gap-1 group/col">
                                               <span>{name}</span>
-                                              <div className="flex gap-0.5 opacity-0 group-hover/col:opacity-100 transition-opacity">
-                                                {(() => {
-                                                  const anyLab = lookup.get(dates[0])?.get(name) ?? lookup.get(dates[dates.length - 1])?.get(name);
-                                                  return anyLab ? (
-                                                    <>
-                                                      <button onClick={() => openEditLab(anyLab)} className="p-0.5 text-natural-300 hover:text-sage-500 transition-colors"><Edit3 className="w-3 h-3" /></button>
-                                                      <button onClick={() => deleteLab(anyLab.id)} className="p-0.5 text-natural-200 hover:text-terracotta-400 transition-colors"><Trash2 className="w-3 h-3" /></button>
-                                                    </>
-                                                  ) : null;
-                                                })()}
-                                              </div>
+                                              {editData && (
+                                                <div className="flex gap-0.5 opacity-100 sm:opacity-0 sm:group-hover/col:opacity-100 transition-opacity">
+                                                  {(() => {
+                                                    const anyLab = lookup.get(dates[0])?.get(name) ?? lookup.get(dates[dates.length - 1])?.get(name);
+                                                    return anyLab ? (
+                                                      <>
+                                                        <button onClick={() => openEditLab(anyLab)} className="p-0.5 text-natural-300 hover:text-sage-500 transition-colors"><Edit3 className="w-3 h-3" /></button>
+                                                        <button onClick={() => deleteLab(anyLab.id, anyLab.name)} className="p-0.5 text-natural-200 hover:text-terracotta-400 transition-colors"><Trash2 className="w-3 h-3" /></button>
+                                                      </>
+                                                    ) : null;
+                                                  })()}
+                                                </div>
+                                              )}
                                             </div>
                                           </th>
                                         ))}
@@ -865,10 +984,10 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
                                                 ) : (
                                                   <span className="text-natural-200">—</span>
                                                 )}
-                                                {lab && (
-                                                  <div className="absolute inset-y-0 right-0 flex items-center gap-0.5 opacity-0 group-hover/cell:opacity-100 transition-opacity bg-white/80 px-1">
+                                                {lab && editData && (
+                                                  <div className="absolute inset-y-0 right-0 flex items-center gap-0.5 opacity-100 sm:opacity-0 sm:group-hover/cell:opacity-100 transition-opacity bg-white/80 px-1">
                                                     <button onClick={() => openEditLab(lab)} className="p-0.5 text-natural-300 hover:text-sage-500 transition-colors"><Edit3 className="w-3 h-3" /></button>
-                                                    <button onClick={() => deleteLab(lab.id)} className="p-0.5 text-natural-200 hover:text-terracotta-400 transition-colors"><Trash2 className="w-3 h-3" /></button>
+                                                    <button onClick={() => deleteLab(lab.id, lab.name)} className="p-0.5 text-natural-200 hover:text-terracotta-400 transition-colors"><Trash2 className="w-3 h-3" /></button>
                                                   </div>
                                                 )}
                                               </td>
@@ -893,12 +1012,8 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
         {/* ── 檢查 ── */}
         {activeTab === 'exam' && (
           <div className="bg-white rounded-2xl border border-natural-200 shadow-sm overflow-hidden">
-            <div className="flex justify-end">
-              <button onClick={openAddExam} className="px-4 py-3 text-xs font-bold text-sage-600 hover:bg-sage-50 transition-colors flex items-center gap-1">
-                <Plus className="w-3.5 h-3.5" /> 新增
-              </button>
-            </div>
-            <div className="px-5 pb-4 pt-3 border-t border-natural-50">
+            {tabBar(openAddExam, day => (patient.examinations || []).filter(e => e.orderedDate === day).length)}
+            <div className="px-3 sm:px-5 pb-4 pt-3 border-t border-natural-50">
                   {(() => {
                     const exams = patient.examinations || [];
                     return (
@@ -917,10 +1032,12 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
                                 <p className="text-[10px] text-natural-400 mb-1">{exam.orderedDate}</p>
                                 {exam.finding && <p className="text-xs text-natural-600 italic">{exam.finding}</p>}
                               </div>
-                              <div className="flex gap-1 shrink-0">
-                                <button onClick={() => openEditExam(exam)} className="p-1.5 text-natural-300 hover:text-sage-500 transition-colors"><Edit3 className="w-3.5 h-3.5" /></button>
-                                <button onClick={() => deleteExam(exam.id)} className="p-1.5 text-natural-200 hover:text-terracotta-400 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
-                              </div>
+                              {editData && (
+                                <div className="flex gap-1 shrink-0">
+                                  <button onClick={() => openEditExam(exam)} className="p-1.5 text-natural-300 hover:text-sage-500 transition-colors"><Edit3 className="w-3.5 h-3.5" /></button>
+                                  <button onClick={() => deleteExam(exam.id, exam.name)} className="p-1.5 text-natural-200 hover:text-terracotta-400 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                                </div>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -934,84 +1051,16 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
         {/* ── Daily Rounds ── */}
         {activeTab === 'rounds' && (
           <div className="bg-white rounded-2xl border border-natural-200 shadow-sm overflow-hidden">
-            <div className="flex justify-end">
-              <button onClick={() => setShowChecklistForm(true)} className="px-4 py-3 text-xs font-bold text-sage-600 hover:bg-sage-50 transition-colors flex items-center gap-1">
-                <Plus className="w-3.5 h-3.5" /> 新增
-              </button>
-            </div>
-            <div className="px-5 pb-5 pt-3 border-t border-natural-50 space-y-4">
+            {tabBar(() => setShowChecklistForm(true), day => patient.dailyChecks.some(c => dayOf(c.date) === day) ? 1 : 0)}
+            <div className="px-3 sm:px-5 pb-5 pt-3 border-t border-natural-50 space-y-4">
                   {showChecklistForm && (
-                    <DailyChecklistForm onCancel={() => setShowChecklistForm(false)} onSubmit={handleAddCheck} />
+                    <DailyChecklistForm day={selectedDay} onCancel={() => setShowChecklistForm(false)} onSubmit={handleAddCheck} />
                   )}
-                  {patient.dailyChecks.length === 0 ? (
-                    <div className="py-10 text-center border-2 border-dashed border-natural-200 rounded-2xl">
-                      <ClipboardList className="w-10 h-10 text-natural-200 mx-auto mb-3" />
-                      <p className="text-natural-400 font-bold uppercase tracking-widest text-xs">No records found</p>
-                    </div>
-                  ) : (
-                    <>
-                      {/* Date navigator */}
-                      {(() => {
-                        const check = patient.dailyChecks[currentCheckIndex];
-                        if (!check) return null;
-                        return (
-                          <div className="flex items-center justify-center gap-1 relative">
-                            <AnimatePresence>
-                              {isDatePickerOpen && (
-                                <motion.div
-                                  initial={{ opacity: 0, y: 8, scale: 0.95 }}
-                                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                                  exit={{ opacity: 0, y: 8, scale: 0.95 }}
-                                  transition={{ duration: 0.12 }}
-                                  className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-48 bg-white rounded-xl shadow-2xl border border-natural-200 z-[100] py-2 max-h-64 overflow-y-auto no-scrollbar"
-                                >
-                                  <div className="px-3 py-1 mb-1 border-b border-natural-100">
-                                    <p className="text-[9px] font-bold text-natural-400 uppercase tracking-widest">Select Date</p>
-                                  </div>
-                                  {[...patient.dailyChecks].reverse().map((dropCheck) => {
-                                    const originalIndex = patient.dailyChecks.findIndex(dc => dc.id === dropCheck.id);
-                                    return (
-                                      <div
-                                        key={dropCheck.id}
-                                        onClick={(e) => { e.stopPropagation(); updateSelectedDate(originalIndex); setIsDatePickerOpen(false); }}
-                                        className={`px-3 py-2 text-left hover:bg-sage-50 transition-colors cursor-pointer flex justify-between items-center ${
-                                          originalIndex === currentCheckIndex ? 'bg-sage-50 text-sage-600' : 'text-natural-600'
-                                        }`}
-                                      >
-                                        <div className="flex flex-col">
-                                          <span className="text-xs font-bold leading-none">{format(new Date(dropCheck.date), 'MMM dd, yyyy')}</span>
-                                          <span className="text-[10px] opacity-60">{format(new Date(dropCheck.date), 'HH:mm (EEE)')}</span>
-                                        </div>
-                                        {originalIndex === currentCheckIndex && <Clock className="w-3 h-3 text-sage-500" />}
-                                      </div>
-                                    );
-                                  })}
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
-                            <button onClick={handleGoToLatest} className="px-2 py-1.5 text-[10px] font-bold text-natural-400 hover:text-sage-600 uppercase tracking-wider transition-colors">Today</button>
-                            <button onClick={handlePrev} disabled={currentCheckIndex <= 0} className="p-1.5 rounded-lg hover:bg-natural-100 text-natural-400 hover:text-natural-700 disabled:opacity-30 disabled:pointer-events-none transition-all">
-                              <ChevronLeft className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => setIsDatePickerOpen(!isDatePickerOpen)}
-                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-natural-100 hover:bg-natural-200 transition-colors text-xs font-bold text-natural-700"
-                            >
-                              {format(new Date(check.date), 'MMM dd, EEE')}
-                              <ChevronDown className={`w-3 h-3 transition-transform ${isDatePickerOpen ? 'rotate-180' : ''}`} />
-                            </button>
-                            <button onClick={handleNext} disabled={currentCheckIndex >= patient.dailyChecks.length - 1} className="p-1.5 rounded-lg hover:bg-natural-100 text-natural-400 hover:text-natural-700 disabled:opacity-30 disabled:pointer-events-none transition-all">
-                              <ChevronRight className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        );
-                      })()}
-                      {/* Carousel */}
                       <div className="relative group/carousel">
                         <AnimatePresence mode="wait">
-                          {patient.dailyChecks[currentCheckIndex] ? (
+                          {selectedCheck ? (
                             <motion.div
-                              key={patient.dailyChecks[currentCheckIndex].id}
+                              key={selectedCheck.id}
                               initial={{ opacity: 0 }}
                               animate={{ opacity: 1 }}
                               exit={{ opacity: 0 }}
@@ -1019,30 +1068,25 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
                               className="bg-white rounded-3xl border border-natural-200 shadow-xl flex flex-col"
                             >
                               {(() => {
-                                const check = patient.dailyChecks[currentCheckIndex];
+                                const check = selectedCheck;
                                 if (!check) return null;
                                 return (
                                   <>
-                                    <div className="p-6 md:p-8 flex flex-col gap-6 relative group/content">
+                                    <div className="p-3 sm:p-6 md:p-8 flex flex-col gap-4 sm:gap-6 relative group/content">
+                                    {editData && (
                                     <button
                                       onClick={() => {
-                                        if (window.confirm('Are you sure you want to delete this daily ward round record?')) {
-                                          const newChecks = patient.dailyChecks.filter(c => c.id !== check.id);
-                                          onUpdate({
-                                            ...patient,
-                                            dailyChecks: newChecks
-                                          });
-                                          if (currentCheckIndex >= newChecks.length) {
-                                            setCurrentCheckIndex(Math.max(0, newChecks.length - 1));
-                                          }
+                                        if (window.confirm('刪除這筆查房紀錄？')) {
+                                          onUpdate({ ...patient, dailyChecks: patient.dailyChecks.filter(c => c.id !== check.id) });
                                         }
                                       }}
-                                      className="absolute top-4 right-4 p-2 text-natural-300 hover:text-terracotta-500 transition-colors opacity-0 group-hover/content:opacity-100 bg-white border border-natural-100 rounded-full shadow-sm hover:shadow-md z-10"
+                                      className="absolute top-4 right-4 p-2 text-natural-300 hover:text-terracotta-500 transition-colors opacity-100 sm:opacity-0 sm:group-hover/content:opacity-100 bg-white border border-natural-100 rounded-full shadow-sm hover:shadow-md z-10"
                                     >
                                       <Trash2 className="w-3.5 h-3.5" />
                                     </button>
+                                    )}
 
-                                    <div className="grid grid-cols-4 gap-2">
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
                                       {CHECK_FIELDS.filter(f => check[f.key] !== undefined).map(f => {
                                         const raw = check[f.key] as string | number | boolean | undefined;
                                         const isBool = typeof f.add === 'boolean';
@@ -1052,14 +1096,15 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
                                           : (f.abnormal ? f.abnormal(raw as number) : false);
                                         return (
                                           <div key={f.key} className="flex items-center gap-2 p-2.5 rounded-xl bg-white border border-natural-100 shadow-xs group/tile">
-                                            <div className={`w-7 h-7 rounded-lg ${f.iconBg} flex items-center justify-center shrink-0`}>{f.icon}</div>
+                                            <div className="w-7 h-7 rounded-lg bg-natural-50 flex items-center justify-center shrink-0">{f.icon}</div>
                                             <div className="flex flex-col min-w-0 flex-1">
                                               <span className="text-[9px] font-bold text-natural-400 uppercase tracking-wider leading-none mb-0.5">{f.label}</span>
                                               {f.options ? (
                                                 <select
                                                   value={shown as string}
+                                                  disabled={!editData}
                                                   onChange={e => handleCheckFieldUpdate(check.id, f.key, isBool ? e.target.value === 'Yes' : e.target.value)}
-                                                  className={`bg-transparent text-xs font-bold focus:outline-hidden cursor-pointer ${bad ? 'text-red-600' : 'text-natural-800'}`}
+                                                  className={`bg-transparent text-xs font-bold focus:outline-hidden disabled:appearance-none disabled:cursor-default cursor-pointer ${bad ? 'text-terracotta-600' : 'text-natural-800'}`}
                                                 >
                                                   {f.options.map(o => <option key={o}>{o}</option>)}
                                                 </select>
@@ -1067,24 +1112,27 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
                                                 <span className="flex items-baseline gap-0.5">
                                                   <input
                                                     type="number" step={f.step} value={raw as number}
+                                                    disabled={!editData}
                                                     onChange={e => handleCheckFieldUpdate(check.id, f.key, e.target.value === '' ? undefined : parseFloat(e.target.value))}
-                                                    className={`w-12 bg-transparent text-xs font-bold focus:outline-hidden ${bad ? 'text-red-600' : 'text-natural-800'}`}
+                                                    className={`w-12 bg-transparent text-xs font-bold focus:outline-hidden ${bad ? 'text-terracotta-600' : 'text-natural-800'}`}
                                                   />
                                                   <span className="text-[9px] text-natural-400">{f.unit}</span>
                                                 </span>
                                               )}
                                             </div>
-                                            <button
-                                              onClick={() => handleCheckFieldUpdate(check.id, f.key, undefined)}
-                                              title="標為未評估"
-                                              className="p-1 text-natural-200 hover:text-terracotta-500 opacity-0 group-hover/tile:opacity-100 transition-all shrink-0"
-                                            >
-                                              <X className="w-3 h-3" />
-                                            </button>
+                                            {editData && (
+                                              <button
+                                                onClick={() => handleCheckFieldUpdate(check.id, f.key, undefined)}
+                                                title="標為未評估"
+                                                className="p-1 text-natural-200 hover:text-terracotta-500 opacity-100 sm:opacity-0 sm:group-hover/tile:opacity-100 transition-all shrink-0"
+                                              >
+                                                <X className="w-3 h-3" />
+                                              </button>
+                                            )}
                                           </div>
                                         );
                                       })}
-                                      {CHECK_FIELDS.some(f => check[f.key] === undefined) && (
+                                      {editData && CHECK_FIELDS.some(f => check[f.key] === undefined) && (
                                         <select
                                           value=""
                                           onChange={e => { const f = CHECK_FIELDS.find(x => x.key === e.target.value); if (f) handleCheckFieldUpdate(check.id, f.key, f.add); }}
@@ -1099,18 +1147,19 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
                                     </div>
 
                                     <div className="flex-1 shrink-0 pt-6 lg:pt-0 lg:pl-8 lg:border-l border-natural-100 max-w-md">
-                                      <div className="flex justify-between items-center mb-3">
-                                        <p className="text-[10px] font-bold text-natural-400 uppercase tracking-widest">Rounding Checklist</p>
-                                        <button
-                                          onClick={() => {
-                                            const notesArray = normalizeNotes(check.notes);
-                                            handleCheckFieldUpdate(check.id, 'notes', [...notesArray, { text: '', completed: false }]);
-                                          }}
-                                          className="p-1 text-sage-500 hover:bg-sage-50 rounded transition-all"
-                                        >
-                                          <Plus className="w-3 h-3" />
-                                        </button>
-                                      </div>
+                                      {editData && (
+                                        <div className="flex justify-end items-center mb-3">
+                                          <button
+                                            onClick={() => {
+                                              const notesArray = normalizeNotes(check.notes);
+                                              handleCheckFieldUpdate(check.id, 'notes', [...notesArray, { text: '', completed: false }]);
+                                            }}
+                                            className="p-1 text-sage-500 hover:bg-sage-50 rounded transition-all"
+                                          >
+                                            <Plus className="w-3 h-3" />
+                                          </button>
+                                        </div>
+                                      )}
                                       <ul className="space-y-2">
                                         {(normalizeNotes(check.notes)).map((noteRaw, idx, notes) => {
                                           const note = typeof noteRaw === 'string' ? { text: noteRaw, completed: false } : noteRaw;
@@ -1121,22 +1170,24 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
                                                 note.completed ? 'opacity-40' : 'opacity-100'
                                               }`}
                                             >
-                                              <div className="flex flex-col gap-0 opacity-0 group-hover/item:opacity-100 transition-opacity shrink-0">
+                                              {editData && (
+                                              <div className="flex flex-col gap-0 opacity-100 sm:opacity-0 sm:group-hover/item:opacity-100 transition-opacity shrink-0">
                                                 <button
                                                   onClick={(e) => { e.stopPropagation(); handleMoveNote(check.id, idx, 'up'); }}
                                                   disabled={idx === 0}
-                                                  className="p-0.5 hover:bg-natural-100 rounded disabled:opacity-0 text-natural-400 hover:text-sage-600"
+                                                  className="p-0.5 hover:bg-natural-100 rounded disabled:opacity-10 text-natural-400 hover:text-sage-600"
                                                 >
                                                   <ChevronUp className="w-3 h-3" />
                                                 </button>
                                                 <button
                                                   onClick={(e) => { e.stopPropagation(); handleMoveNote(check.id, idx, 'down'); }}
                                                   disabled={idx === notes.length - 1}
-                                                  className="p-0.5 hover:bg-natural-100 rounded disabled:opacity-0 text-natural-400 hover:text-sage-600"
+                                                  className="p-0.5 hover:bg-natural-100 rounded disabled:opacity-10 text-natural-400 hover:text-sage-600"
                                                 >
                                                   <ChevronDown className="w-3 h-3" />
                                                 </button>
                                               </div>
+                                              )}
 
                                               <div
                                                 onClick={() => handleToggleNoteCompletion(check.id, idx)}
@@ -1150,22 +1201,25 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
                                               <div className="flex-1 min-w-0">
                                                 <input
                                                   value={note.text}
+                                                  readOnly={!editData}
                                                   onChange={(e) => handleUpdateNoteText(check.id, idx, e.target.value)}
-                                                  className={`w-full bg-transparent text-sm font-medium leading-tight focus:outline-hidden border-b border-transparent hover:border-natural-100 focus:border-sage-400 ${
+                                                  className={`w-full bg-transparent text-sm font-medium leading-tight focus:outline-hidden border-b border-transparent read-only:hover:border-transparent hover:border-natural-100 focus:border-sage-400 ${
                                                     note.completed ? 'line-through text-natural-400' : 'text-natural-900 italic'
                                                   }`}
                                                 />
                                               </div>
 
-                                              <button
-                                                onClick={() => {
-                                                  const notesArray = normalizeNotes(check.notes);
-                                                  handleCheckFieldUpdate(check.id, 'notes', notesArray.filter((_, i) => i !== idx));
-                                                }}
-                                                className="opacity-0 group-hover/item:opacity-100 p-1 text-natural-300 hover:text-terracotta-500 transition-all shrink-0"
-                                              >
-                                                <Trash2 className="w-3 h-3" />
-                                              </button>
+                                              {editData && (
+                                                <button
+                                                  onClick={() => {
+                                                    const notesArray = normalizeNotes(check.notes);
+                                                    handleCheckFieldUpdate(check.id, 'notes', notesArray.filter((_, i) => i !== idx));
+                                                  }}
+                                                  className="opacity-100 sm:opacity-0 sm:group-hover/item:opacity-100 p-1 text-natural-300 hover:text-terracotta-500 transition-all shrink-0"
+                                                >
+                                                  <Trash2 className="w-3 h-3" />
+                                                </button>
+                                              )}
                                             </li>
                                           );
                                         })}
@@ -1177,14 +1231,14 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
                               })()}
                             </motion.div>
                           ) : (
-                            <div className="bg-white rounded-3xl border border-natural-200 shadow-xl p-12 text-center text-natural-400">
-                              No records found for this patient.
+                            <div className="py-10 text-center border-2 border-dashed border-natural-200 rounded-2xl">
+                              <ClipboardList className="w-10 h-10 text-natural-200 mx-auto mb-3" />
+                              <p className="text-natural-400 font-bold uppercase tracking-widest text-xs">這天沒有查房紀錄</p>
+                              <button onClick={() => setShowChecklistForm(true)} className="mt-3 text-xs font-bold text-sage-600 hover:underline">新增這天的紀錄</button>
                             </div>
                           )}
                         </AnimatePresence>
                       </div>
-                    </>
-                  )}
             </div>
           </div>
         )}
@@ -1192,14 +1246,14 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
       </div>
 
       {/* JSON Import Modal */}
-      {showJsonModal && (
+      {jsonOpen && (
         <div className="fixed inset-0 bg-natural-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 16 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             className="bg-white w-full max-w-xl rounded-2xl shadow-2xl border border-natural-200 overflow-hidden"
           >
-            <div className="flex items-center justify-between px-6 py-4 border-b border-natural-100">
+            <div className="flex items-center justify-between px-4 sm:px-6 py-3 sm:py-4 border-b border-natural-100">
               <div className="flex items-center gap-2">
                 <ClipboardPaste className="w-4 h-4 text-sage-500" />
                 <h3 className="font-serif font-bold text-natural-900">
@@ -1211,7 +1265,7 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
               </button>
             </div>
 
-            <div className="p-6 space-y-4">
+            <div className="p-4 sm:p-6 space-y-4">
               {/* ── Conflict diff view ── */}
               {conflicts.length > 0 ? (
                 <>
@@ -1335,7 +1389,7 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
       {/* ── Stop Medication Confirm ── */}
       {stoppingMedId && (
         <div className="fixed inset-0 bg-natural-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 border border-natural-200">
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-4 sm:p-6 border border-natural-200">
             <h3 className="text-base font-bold text-natural-900 mb-1">停用藥物</h3>
             <p className="text-xs text-natural-400 mb-4">{(patient.medications || []).find(m => m.id === stoppingMedId)?.name}</p>
             <label className="block text-[10px] font-bold text-natural-400 uppercase tracking-widest mb-1.5">停藥原因（選填）</label>
@@ -1356,7 +1410,7 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
       {/* ── Medication Add/Edit Modal ── */}
       {showMedModal && (
         <div className="fixed inset-0 bg-natural-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 border border-natural-200">
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-4 sm:p-6 border border-natural-200">
             <div className="flex justify-between items-center mb-5">
               <h3 className="text-base font-bold text-natural-900">{editingMedId ? '編輯用藥' : '新增用藥'}</h3>
               <button onClick={() => setShowMedModal(false)} className="text-natural-300 hover:text-natural-600"><X className="w-5 h-5" /></button>
@@ -1398,7 +1452,7 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
       {/* ── Lab Add/Edit Modal ── */}
       {showLabModal && (
         <div className="fixed inset-0 bg-natural-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 border border-natural-200">
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-4 sm:p-6 border border-natural-200">
             <div className="flex justify-between items-center mb-5">
               <h3 className="text-base font-bold text-natural-900">{editingLabId ? '編輯檢驗' : '新增檢驗'}</h3>
               <button onClick={() => setShowLabModal(false)} className="text-natural-300 hover:text-natural-600"><X className="w-5 h-5" /></button>
@@ -1420,7 +1474,7 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
                   <input type="date" value={labForm.orderedDate} onChange={e => setLabForm(p => ({ ...p, orderedDate: e.target.value }))} className="w-full px-3 py-2 bg-natural-50 border border-natural-200 rounded-lg text-sm focus:ring-2 focus:ring-sage-500/20 focus:border-sage-500 outline-hidden" />
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-2 sm:gap-3">
                 <div>
                   <label className="block text-[10px] font-bold text-natural-400 uppercase tracking-widest mb-1">結果數值</label>
                   <input value={labForm.value} onChange={e => setLabForm(p => ({ ...p, value: e.target.value }))} className="w-full px-3 py-2 bg-natural-50 border border-natural-200 rounded-lg text-sm focus:ring-2 focus:ring-sage-500/20 focus:border-sage-500 outline-hidden" placeholder="13.5" />
@@ -1444,7 +1498,7 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
                   <div className="flex rounded-lg overflow-hidden border border-natural-200 text-[10px] font-bold h-[38px]">
                     <button type="button" onClick={() => setLabForm(p => ({ ...p, isAbnormal: false, abnormalDir: '' }))} className={`flex-1 transition-all ${!labForm.isAbnormal ? 'bg-natural-600 text-white' : 'text-natural-400 hover:bg-natural-50'}`}>正常</button>
                     <button type="button" onClick={() => setLabForm(p => ({ ...p, isAbnormal: true, abnormalDir: 'H' }))} className={`flex-1 transition-all border-x border-natural-200 ${labForm.abnormalDir === 'H' ? 'bg-terracotta-500 text-white' : 'text-natural-400 hover:bg-natural-50'}`}>偏高 H</button>
-                    <button type="button" onClick={() => setLabForm(p => ({ ...p, isAbnormal: true, abnormalDir: 'L' }))} className={`flex-1 transition-all ${labForm.abnormalDir === 'L' ? 'bg-blue-500 text-white' : 'text-natural-400 hover:bg-natural-50'}`}>偏低 L</button>
+                    <button type="button" onClick={() => setLabForm(p => ({ ...p, isAbnormal: true, abnormalDir: 'L' }))} className={`flex-1 transition-all ${labForm.abnormalDir === 'L' ? 'bg-clinical-500 text-white' : 'text-natural-400 hover:bg-natural-50'}`}>偏低 L</button>
                   </div>
                 </div>
               </div>
@@ -1460,7 +1514,7 @@ const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
       {/* ── Examination Add/Edit Modal ── */}
       {showExamModal && (
         <div className="fixed inset-0 bg-natural-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 border border-natural-200">
+          <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-4 sm:p-6 border border-natural-200">
             <div className="flex justify-between items-center mb-5">
               <h3 className="text-base font-bold text-natural-900">{editingExamId ? '編輯檢查' : '新增檢查'}</h3>
               <button onClick={() => setShowExamModal(false)} className="text-natural-300 hover:text-natural-600"><X className="w-5 h-5" /></button>
@@ -1504,11 +1558,14 @@ function DropdownSelect({
   onChange,
   options,
   compact = false,
+  bare = false,
 }: {
   value: string;
   onChange: (v: string) => void;
   options: { value: string; label: string; triggerClass: string; dotColor: string }[];
   compact?: boolean;
+  /** 只顯示文字（無點、無邊框），給性別這種已經用顏色表示的欄位 */
+  bare?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -1531,12 +1588,14 @@ function DropdownSelect({
         onClick={() => setOpen(p => !p)}
         title={current.label}
         className={compact
-          ? `w-4 h-4 rounded-full ${current.dotColor} ring-2 ring-offset-2 ring-transparent hover:ring-current transition-all`
-          : `flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-bold tracking-wide transition-all ${current.triggerClass}`}
+          ? `w-2.5 h-2.5 rounded-full ${current.dotColor} ring-2 ring-offset-1 ring-transparent hover:ring-current transition-all`
+          : bare
+            ? 'text-sm font-bold text-natural-500 hover:text-natural-800 transition-colors'
+            : `flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-bold tracking-wide transition-all ${current.triggerClass}`}
       >
-        {!compact && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${current.dotColor}`} />}
+        {!compact && !bare && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${current.dotColor}`} />}
         {!compact && current.label}
-        {!compact && <ChevronDown className={`w-3 h-3 transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />}
+        {!compact && !bare && <ChevronDown className={`w-3 h-3 transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />}
       </button>
       <AnimatePresence>
         {open && (

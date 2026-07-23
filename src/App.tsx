@@ -15,6 +15,16 @@ import {
   LogIn,
   Loader2,
   Trash2,
+  ClipboardPaste,
+  MoreVertical,
+  Scissors,
+  Hash,
+  Clock,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
+  Activity,
+  DoorOpen,
   Check,
   Pencil,
   X
@@ -41,7 +51,33 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { format } from 'date-fns';
+import { format, addDays } from 'date-fns';
+
+// 與 PatientDetails 的床號標籤同一個樣式
+const GENDER_TONE: Record<string, string> = {
+  Male: 'bg-clinical-50 text-clinical-700 border-clinical-100',
+  Female: 'bg-blush-50 text-blush-600 border-blush-100',
+  Other: 'bg-natural-100 text-natural-500 border-natural-200',
+};
+
+// 排序用的臨床優先序（與 STATUS_TONE 的顯示順序無關）
+const STATUS_ORDER: Record<string, number> = {
+  Critical: 0,
+  Stable: 1,
+  'Discharge Pending': 2,
+  Discharged: 3,
+};
+
+const byBed = (a: Patient, b: Patient) =>
+  a.bedNumber.localeCompare(b.bedNumber, undefined, { numeric: true });
+
+// label 只當 tooltip 用
+const STATUS_TONE: Record<string, { label: string; dot: string }> = {
+  Stable: { label: 'Stable', dot: 'bg-sage-400' },
+  Critical: { label: 'Critical', dot: 'bg-terracotta-500' },
+  'Discharge Pending': { label: 'Discharge Pending', dot: 'bg-clay-400' },
+  Discharged: { label: 'Discharged', dot: 'bg-natural-300' },
+};
 
 export default function App() {
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -57,6 +93,13 @@ export default function App() {
   const [showPatientSwitcher, setShowPatientSwitcher] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const toggleSearch = () => { setShowSearch(s => { if (s) setSearchTerm(''); return !s; }); };
+  const [sortBy, setSortBy] = useState<'bed' | 'status' | 'admission'>('bed');
+  const [sortAsc, setSortAsc] = useState(true);
+  const [showSort, setShowSort] = useState(false);
+  // 病患內頁的兩顆 topbar 按鈕
+  const [editHeader, setEditHeader] = useState(false);
+  const [jsonOpen, setJsonOpen] = useState(false);
+  useEffect(() => { setEditHeader(false); setJsonOpen(false); }, [selectedPatientId]);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const toggleExpand = (id: string) => setExpandedIds(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const [user, setUser] = useState<User | null>(null);
@@ -115,6 +158,9 @@ export default function App() {
     return () => unsubscribe();
   }, [user]);
 
+  const today = format(new Date(), 'yyyy-MM-dd');
+  const tomorrow = format(addDays(new Date(), 1), 'yyyy-MM-dd');
+
   const selectedPatient = patients.find(p => p.id === selectedPatientId);
 
   const filteredPatients = patients.filter(p => {
@@ -125,6 +171,13 @@ export default function App() {
       p.chartNumber.includes(searchTerm)
     );
   });
+  const sortedPatients = [...filteredPatients].sort((a, b) => {
+    const v = sortBy === 'bed' ? byBed(a, b)
+      : sortBy === 'admission' ? (a.admissionDate || '').localeCompare(b.admissionDate || '') || byBed(a, b)
+      : ((STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9)) || byBed(a, b);
+    return sortAsc ? v : -v;
+  });
+
   const dischargedCount = patients.filter(p => p.status === 'Discharged').length;
   const activeCount = patients.filter(p => p.status !== 'Discharged').length;
 
@@ -307,9 +360,9 @@ export default function App() {
     <div className="h-screen bg-natural-50 overflow-hidden font-sans text-natural-600">
       {/* Main Content */}
       <main className="h-full flex flex-col overflow-hidden relative">
-        <header className="h-16 bg-white border-b border-natural-200 px-6 flex items-center gap-4 justify-between shrink-0 shadow-sm z-10">
-          {/* Left: menu + nav context */}
-          <div className="flex items-center gap-3 shrink-0">
+        <header className="h-14 sm:h-16 bg-white border-b border-natural-200 px-2 sm:px-6 flex items-center gap-2 sm:gap-4 justify-between shrink-0 shadow-sm z-10">
+          {/* Left: menu + nav context（病患內頁時右側動作靠右） */}
+          <div className={`flex items-center gap-1 sm:gap-3 ${selectedPatientId ? 'flex-1 min-w-0' : 'shrink-0'}`}>
             <button
               onClick={() => setShowSidebar(true)}
               className="p-2 rounded-lg text-natural-400 hover:text-natural-700 hover:bg-natural-100 transition-colors"
@@ -323,60 +376,72 @@ export default function App() {
                   className="flex items-center gap-1 text-xs font-bold uppercase tracking-widest text-natural-400 hover:text-sage-600 group transition-colors"
                 >
                   <ChevronRight className="w-4 h-4 rotate-180 group-hover:-translate-x-0.5 transition-transform" />
-                  返回
+                  <span className="hidden sm:inline">返回</span>
                 </button>
-                <span className="text-natural-200">|</span>
+                <span className="text-natural-200 mx-2 sm:mx-3">|</span>
                 <button
                   onClick={() => setShowPatientSwitcher(true)}
                   className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-natural-400 hover:text-sage-600 transition-colors"
                 >
                   <Users className="w-3.5 h-3.5" />
-                  切換
+                  <span className="hidden sm:inline">切換</span>
                 </button>
+
+                <div className="flex items-center gap-0.5 ml-auto">
+                  <button
+                    onClick={() => setJsonOpen(true)}
+                    title="貼上 JSON 更新病患資料"
+                    className="p-2 rounded-lg text-natural-400 hover:text-sage-600 hover:bg-natural-100 transition-colors"
+                  >
+                    <ClipboardPaste className="w-4 h-4" />
+                  </button>
+                  {editHeader && (
+                    <button
+                      onClick={() => handleDeletePatient(selectedPatientId)}
+                      title="刪除病患"
+                      className="p-2 rounded-lg text-natural-400 hover:text-terracotta-500 hover:bg-natural-100 transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setEditHeader(e => !e)}
+                    title={editHeader ? '完成編輯' : '編輯基本資料'}
+                    className={`p-2 rounded-lg transition-colors ${
+                      editHeader ? 'bg-sage-100 text-sage-700' : 'text-natural-400 hover:text-sage-600 hover:bg-natural-100'
+                    }`}
+                  >
+                    {editHeader ? <Check className="w-4 h-4" /> : <MoreVertical className="w-4 h-4" />}
+                  </button>
+                </div>
               </>
-            ) : showSchedule ? (
-              <button
-                onClick={() => setShowSchedule(false)}
-                className="flex items-center gap-1 text-xs font-bold uppercase tracking-widest text-natural-400 hover:text-sage-600 group transition-colors"
-              >
-                <ChevronRight className="w-4 h-4 rotate-180 group-hover:-translate-x-0.5 transition-transform" />
-                病患列表
-              </button>
             ) : (
-              <div className="flex gap-0.5 p-0.5 bg-natural-100 rounded-lg border border-natural-200">
-                <button
-                  onClick={() => { setShowDischarged(false); setIsEditMode(false); }}
-                  className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${!showDischarged ? 'bg-white text-sage-700 shadow-sm' : 'text-natural-400 hover:text-natural-600'}`}
-                >
-                  住院中 <span className={`ml-1 text-[10px] ${!showDischarged ? 'text-sage-500' : 'text-natural-300'}`}>{activeCount}</span>
-                </button>
-                <button
-                  onClick={() => { setShowDischarged(true); setIsEditMode(false); }}
-                  className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${showDischarged ? 'bg-white text-natural-700 shadow-sm' : 'text-natural-400 hover:text-natural-600'}`}
-                >
-                  已出院 <span className={`ml-1 text-[10px] ${showDischarged ? 'text-natural-500' : 'text-natural-300'}`}>{dischargedCount}</span>
-                </button>
-              </div>
+              <span className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-natural-500">
+                {showSchedule ? '今日排程' : showDischarged ? '出院清單' : '病患列表'}
+                {!showSchedule && (
+                  <span className="text-[10px] text-natural-300">{showDischarged ? dischargedCount : activeCount}</span>
+                )}
+              </span>
             )}
           </div>
 
-          {/* Right: search + actions */}
-          <div className="flex items-center gap-2">
+          {/* Right: search + actions（病患內頁不需要，全部收起） */}
+          <div className={`flex items-center gap-1 sm:gap-2 min-w-0 flex-1 justify-end ${selectedPatientId ? 'hidden' : ''}`}>
             {/* Expandable search */}
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 min-w-0 flex-1 justify-end">
               <AnimatePresence>
                 {showSearch && (
                   <motion.div
                     initial={{ width: 0, opacity: 0 }}
-                    animate={{ width: 220, opacity: 1 }}
+                    animate={{ width: '100%', opacity: 1 }}
                     exit={{ width: 0, opacity: 0 }}
                     transition={{ duration: 0.18 }}
-                    className="overflow-hidden"
+                    className="overflow-hidden max-w-[220px]"
                   >
                     <input
                       autoFocus
                       type="text"
-                      placeholder="搜尋姓名、床號、病歷號..."
+                      placeholder="搜尋姓名/床號/病歷號"
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       onKeyDown={(e) => e.key === 'Escape' && toggleSearch()}
@@ -387,26 +452,37 @@ export default function App() {
               </AnimatePresence>
               <button
                 onClick={toggleSearch}
-                className="p-2 rounded-lg text-natural-400 hover:text-natural-700 hover:bg-natural-100 transition-colors"
+                className="p-2 rounded-lg text-natural-400 hover:text-natural-700 hover:bg-natural-100 transition-colors shrink-0"
               >
                 {showSearch ? <X className="w-4 h-4" /> : <Search className="w-4 h-4" />}
               </button>
             </div>
 
             {!selectedPatientId && !showSchedule && (
+              <button
+                onClick={() => setShowSort(s => !s)}
+                title="排序"
+                className={`p-2 rounded-lg transition-colors shrink-0 ${
+                  showSort ? 'bg-sage-100 text-sage-700' : 'text-natural-400 hover:text-natural-700 hover:bg-natural-100'
+                }`}
+              >
+                <ArrowUpDown className="w-4 h-4" />
+              </button>
+            )}
+            {!selectedPatientId && !showSchedule && (
               isEditMode ? (
-                <button onClick={exitEditMode} className="px-4 py-2 rounded-lg text-xs font-bold bg-natural-100 text-natural-600 border border-natural-200 hover:bg-natural-200 transition-all">完成</button>
+                <button onClick={exitEditMode} className="px-3 sm:px-4 py-2 rounded-lg text-xs font-bold bg-natural-100 text-natural-600 border border-natural-200 hover:bg-natural-200 transition-all shrink-0">完成</button>
               ) : (
-                <button onClick={() => setIsEditMode(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold bg-natural-100 text-natural-600 border border-natural-200 hover:bg-natural-200 transition-all">
-                  <Pencil className="w-3.5 h-3.5" />編輯
+                <button onClick={() => setIsEditMode(true)} title="編輯" className="flex items-center gap-1.5 px-2.5 sm:px-4 py-2 rounded-lg text-xs font-bold bg-natural-100 text-natural-600 border border-natural-200 hover:bg-natural-200 transition-all shrink-0">
+                  <Pencil className="w-3.5 h-3.5" /><span className="hidden sm:inline">編輯</span>
                 </button>
               )
             )}
-            <button onClick={() => setShowImportModal(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold bg-natural-100 text-natural-600 border border-natural-200 hover:bg-natural-200 transition-all">
-              <FileUp className="w-3.5 h-3.5" />匯入
+            <button onClick={() => setShowImportModal(true)} title="匯入" className="flex items-center gap-1.5 px-2.5 sm:px-4 py-2 rounded-lg text-xs font-bold bg-natural-100 text-natural-600 border border-natural-200 hover:bg-natural-200 transition-all shrink-0">
+              <FileUp className="w-3.5 h-3.5" /><span className="hidden sm:inline">匯入</span>
             </button>
-            <button onClick={() => setShowAddForm(true)} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold bg-sage-500 text-white hover:bg-sage-600 transition-all shadow-sm">
-              <Plus className="w-3.5 h-3.5" />新增病患
+            <button onClick={() => setShowAddForm(true)} title="新增病患" className="flex items-center gap-1.5 px-2.5 sm:px-4 py-2 rounded-lg text-xs font-bold bg-sage-500 text-white hover:bg-sage-600 transition-all shadow-sm shrink-0">
+              <Plus className="w-3.5 h-3.5" /><span className="hidden sm:inline">新增病患</span>
             </button>
           </div>
         </header>
@@ -452,7 +528,7 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        <div className="flex-1 overflow-auto p-8">
+        <div className="flex-1 overflow-auto p-2.5 sm:p-6 lg:p-8">
           <AnimatePresence mode="wait">
             {!selectedPatientId && showSchedule ? (
               <motion.div
@@ -472,23 +548,45 @@ export default function App() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
-                className="bg-white rounded-2xl border border-natural-200 shadow-sm overflow-hidden"
               >
-                {filteredPatients.length === 0 ? (
+                {/* 排序列：獨立在清單卡片之外，由 topbar 的按鈕展開 */}
+                {showSort && (
+                  <div className="flex items-center gap-1 px-1 pb-2">
+                    {([['bed', '床號排序', <Hash key="i" className="w-4 h-4" />],
+                       ['status', '狀態排序', <Activity key="i" className="w-4 h-4" />],
+                       ['admission', '住院日排序', <Clock key="i" className="w-4 h-4" />]] as const).map(([key, label, icon]) => (
+                      <button
+                        key={key}
+                        onClick={() => setSortBy(key)}
+                        title={label}
+                        className={`p-1.5 rounded-lg transition-colors ${
+                          sortBy === key ? 'bg-sage-100 text-sage-700' : 'text-natural-300 hover:text-natural-600'
+                        }`}
+                      >
+                        {icon}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => setSortAsc(a => !a)}
+                      title={sortAsc ? '正序' : '倒序'}
+                      className="p-1.5 rounded-lg text-natural-400 hover:text-sage-600 transition-colors ml-1"
+                    >
+                      {sortAsc ? <ArrowDown className="w-4 h-4" /> : <ArrowUp className="w-4 h-4" />}
+                    </button>
+                  </div>
+                )}
+
+                <div className="bg-white rounded-2xl border border-natural-200 shadow-sm overflow-hidden">
+                {sortedPatients.length === 0 ? (
                   <div className="py-20 text-center">
                     <Users className="w-10 h-10 text-natural-200 mx-auto mb-3" />
                     <p className="text-natural-400 font-bold uppercase tracking-widest text-xs">尚無病患資料</p>
                   </div>
                 ) : (
-                  filteredPatients.map(patient => {
+                  sortedPatients.map(patient => {
                     const isSelected = selectedIds.has(patient.id);
                     const isExpanded = expandedIds.has(patient.id);
-                    const statusDot: Record<string, string> = {
-                      Stable: 'bg-sage-400',
-                      Critical: 'bg-terracotta-500',
-                      'Discharge Pending': 'bg-clay-400',
-                      Discharged: 'bg-natural-300',
-                    };
+                    const status = STATUS_TONE[patient.status] ?? STATUS_TONE.Discharged;
                     const abnormals = patient.labTests?.filter(l => l.isAbnormal) ?? [];
                     const lastCheck = patient.dailyChecks?.length
                       ? [...patient.dailyChecks].sort((a, b) => b.date.localeCompare(a.date))[0]
@@ -497,7 +595,7 @@ export default function App() {
                       <div key={patient.id} className="border-b border-natural-50 last:border-b-0">
                         <div
                           onClick={isEditMode ? () => toggleSelect(patient.id) : undefined}
-                          className={`flex items-center gap-3 px-6 py-3 transition-colors ${
+                          className={`flex items-center gap-2 sm:gap-3 px-3 sm:px-6 py-2.5 sm:py-3 transition-colors ${
                             isEditMode ? `cursor-pointer ${isSelected ? 'bg-terracotta-50' : 'hover:bg-natural-50'}` : ''
                           }`}
                         >
@@ -508,27 +606,33 @@ export default function App() {
                               {isSelected && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
                             </div>
                           )}
-                          <span className="text-[10px] font-bold text-sage-600 bg-sage-50 border border-sage-100 px-2 py-0.5 rounded uppercase tracking-wider w-16 shrink-0 text-center">
-                            {patient.bedNumber}
-                          </span>
                           {/* Main info — navigate on click in normal mode */}
                           <button
                             disabled={isEditMode}
                             onClick={() => setSelectedPatientId(patient.id)}
                             className="flex-1 min-w-0 text-left group hover:bg-sage-50/50 -mx-1 px-1 rounded-lg transition-colors disabled:pointer-events-none"
                           >
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-natural-900 truncate">{patient.name}</span>
+                            <div className="flex items-baseline gap-3 sm:gap-4 flex-wrap">
+                              <span className={`px-2 py-0.5 rounded border text-xs font-bold uppercase tracking-wider shrink-0 w-16 text-center ${GENDER_TONE[patient.gender] ?? GENDER_TONE.Other}`}>
+                                {patient.bedNumber}
+                              </span>
+                              <span className="text-natural-900 truncate">{patient.name}</span>
                               <span className="text-xs text-natural-400 shrink-0">
                                 {patient.age} {patient.gender === 'Female' ? 'F' : patient.gender === 'Other' ? 'O' : 'M'}
                               </span>
-                              <span
-                                className={`w-2 h-2 rounded-full shrink-0 ${statusDot[patient.status] ?? 'bg-natural-300'}`}
-                                title={patient.status}
-                              />
-                              <ChevronRight className="w-3.5 h-3.5 text-natural-200 group-hover:text-sage-400 ml-auto shrink-0 transition-colors" />
+                              <span className={`w-2 h-2 rounded-full shrink-0 self-center ${status.dot}`} title={status.label} />
+                              {(patient.opDate === today || patient.opDate === tomorrow) && (
+                                <span
+                                  className="shrink-0 self-center"
+                                  title={`${patient.opDate === today ? '今日' : '明日'}手術：${patient.opProcedure || '術式未填'}`}
+                                >
+                                  {/* 今天實心深色、明天淡色虛化 — 同一個符號，一眼分得出急迫度 */}
+                                  <Scissors className={`w-3.5 h-3.5 ${patient.opDate === today ? 'text-clay-600' : 'text-clay-400 opacity-70'}`} />
+                                </span>
+                              )}
+                              <ChevronRight className="w-3.5 h-3.5 text-natural-200 group-hover:text-sage-400 ml-auto shrink-0 transition-colors self-center" />
                             </div>
-                            <p className="text-xs text-natural-400 truncate mt-0.5">{patient.diagnosis || '—'}</p>
+                            <p className="text-xs text-natural-400 truncate mt-1">{patient.diagnosis || '—'}</p>
                           </button>
                           {/* Expand toggle */}
                           {!isEditMode && (
@@ -551,7 +655,7 @@ export default function App() {
                               transition={{ duration: 0.15 }}
                               className="overflow-hidden"
                             >
-                              <div className="px-6 pb-3 pt-1 pl-[88px] flex flex-wrap gap-x-4 gap-y-1 text-xs text-natural-500 bg-natural-50/60">
+                              <div className="px-3 sm:px-6 pb-3 pt-1 pl-3 sm:pl-[88px] flex flex-wrap gap-x-4 gap-y-1 text-xs text-natural-500 bg-natural-50/60">
                                 {(patient.medications?.length ?? 0) > 0 && (
                                   <span className="flex items-center gap-1.5">
                                     <span className="w-1.5 h-1.5 rounded-full bg-sage-400 shrink-0" />
@@ -582,6 +686,7 @@ export default function App() {
                     );
                   })
                 )}
+                </div>
               </motion.div>
             ) : selectedPatient ? (
               <motion.div
@@ -591,10 +696,13 @@ export default function App() {
                 exit={{ opacity: 0, x: -20 }}
                 className="max-w-6xl mx-auto"
               >
-                <PatientDetails 
-                  patient={selectedPatient} 
+                <PatientDetails
+                  patient={selectedPatient}
                   onUpdate={handleUpdatePatient}
                   onDelete={handleDeletePatient}
+                  editHeader={editHeader}
+                  jsonOpen={jsonOpen}
+                  onCloseJson={() => setJsonOpen(false)}
                 />
               </motion.div>
             ) : null}
@@ -629,21 +737,32 @@ export default function App() {
                 <div className="flex-1 px-3 py-4 space-y-1">
                   <button
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
-                      !selectedPatientId && !showSchedule ? 'bg-sage-100 text-sage-700' : 'text-natural-400 hover:bg-white hover:text-natural-600'
+                      !selectedPatientId && !showSchedule && !showDischarged ? 'bg-sage-100 text-sage-700' : 'text-natural-400 hover:bg-white hover:text-natural-600'
                     }`}
-                    onClick={() => { setSelectedPatientId(null); setShowSchedule(false); setShowSidebar(false); }}
+                    onClick={() => { setSelectedPatientId(null); setShowSchedule(false); setShowDischarged(false); setIsEditMode(false); setShowSidebar(false); }}
                   >
                     <Users className="w-4 h-4 shrink-0" />
                     病患列表
+                    <span className="ml-auto text-[10px] text-natural-300">{activeCount}</span>
                   </button>
                   <button
                     className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
                       !selectedPatientId && showSchedule ? 'bg-sage-100 text-sage-700' : 'text-natural-400 hover:bg-white hover:text-natural-600'
                     }`}
-                    onClick={() => { setSelectedPatientId(null); setShowSchedule(true); setShowSidebar(false); }}
+                    onClick={() => { setSelectedPatientId(null); setShowSchedule(true); setIsEditMode(false); setShowSidebar(false); }}
                   >
                     <ClipboardList className="w-4 h-4 shrink-0" />
                     今日排程
+                  </button>
+                  <button
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+                      !selectedPatientId && !showSchedule && showDischarged ? 'bg-sage-100 text-sage-700' : 'text-natural-400 hover:bg-white hover:text-natural-600'
+                    }`}
+                    onClick={() => { setSelectedPatientId(null); setShowSchedule(false); setShowDischarged(true); setIsEditMode(false); setShowSidebar(false); }}
+                  >
+                    <DoorOpen className="w-4 h-4 shrink-0" />
+                    出院清單
+                    <span className="ml-auto text-[10px] text-natural-300">{dischargedCount}</span>
                   </button>
                   <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-natural-400 hover:bg-white hover:text-natural-600 transition-all">
                     <Stethoscope className="w-4 h-4 shrink-0" />

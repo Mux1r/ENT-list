@@ -47,7 +47,7 @@ export default function PatientForm({ patient, onSubmit, onCancel }: PatientForm
         animate={{ opacity: 1, scale: 1, y: 0 }}
         className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden border border-natural-200"
       >
-        <div className="bg-sage-600 p-6 text-white flex justify-between items-center">
+        <div className="bg-sage-600 p-4 sm:p-6 text-white flex justify-between items-center">
           <div className="flex items-center gap-3">
             {patient ? <FileEdit className="w-6 h-6" /> : <UserPlus className="w-6 h-6" />}
             <div>
@@ -60,7 +60,7 @@ export default function PatientForm({ patient, onSubmit, onCancel }: PatientForm
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-8 space-y-6 max-h-[80vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-8 space-y-5 sm:space-y-6 max-h-[80vh] overflow-y-auto">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="col-span-2">
               <label className="block text-[10px] font-bold text-natural-400 uppercase tracking-widest mb-2 px-1">姓名 Name</label>
