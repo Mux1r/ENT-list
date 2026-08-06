@@ -1,18 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Patient, Gender } from '../types';
-import { X, Clipboard, Save, Info, FileJson, FileText, ImageIcon, Loader2, Check } from 'lucide-react';
+import { X, Clipboard, Save, Info, FileJson, FileText, ImageIcon, Loader2, Check, Plus } from 'lucide-react';
 import { motion } from 'motion/react';
 import Papa from 'papaparse';
 import { analyzePatientListImage, ExtractedPatientRow } from '../services/geminiService';
 
 interface ImportModalProps {
-  onImport: (patients: Patient[]) => void;
+  onImport: (patients: Patient[], isFullList?: boolean) => void;
   onCancel: () => void;
+  onManualAdd: () => void;
 }
 
 type ImportMode = 'file' | 'paste' | 'screenshot';
 
-export default function ImportModal({ onImport, onCancel }: ImportModalProps) {
+export default function ImportModal({ onImport, onCancel, onManualAdd }: ImportModalProps) {
   const [textData, setTextData] = useState('');
   const [importMode, setImportMode] = useState<ImportMode>('screenshot');
 
@@ -188,7 +189,7 @@ export default function ImportModal({ onImport, onCancel }: ImportModalProps) {
       clinicalPearls: [],
       dailyChecks: [],
     }));
-    onImport(patients);
+    onImport(patients, true); // 截圖是最新的完整清單
   };
 
   const tabClass = (mode: ImportMode) =>
@@ -201,9 +202,9 @@ export default function ImportModal({ onImport, onCancel }: ImportModalProps) {
       <motion.div
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden border border-natural-200"
+        className="bg-white w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl shadow-2xl overflow-hidden border border-natural-200"
       >
-        <div className="bg-sage-600 p-4 sm:p-6 text-white flex justify-between items-center">
+        <div className="shrink-0 bg-sage-600 p-4 sm:p-6 text-white flex justify-between items-center">
           <div className="flex items-center gap-3">
             <Clipboard className="w-6 h-6" />
             <div>
@@ -218,7 +219,7 @@ export default function ImportModal({ onImport, onCancel }: ImportModalProps) {
           </button>
         </div>
 
-        <div className="p-1 px-3 sm:px-8 bg-natural-100 flex gap-2 sm:gap-4 border-b border-natural-200 overflow-x-auto no-scrollbar">
+        <div className="shrink-0 p-1 px-3 sm:px-8 bg-natural-100 flex gap-2 sm:gap-4 border-b border-natural-200 overflow-x-auto no-scrollbar">
           <button onClick={() => setImportMode('screenshot')} className={tabClass('screenshot')}>
             截圖匯入
           </button>
@@ -228,15 +229,23 @@ export default function ImportModal({ onImport, onCancel }: ImportModalProps) {
           <button onClick={() => setImportMode('paste')} className={tabClass('paste')}>
             直接貼上文字
           </button>
+          {/* 少數要手動建一位病患的情況，從這裡進表單 */}
+          <button
+            onClick={onManualAdd}
+            className="ml-auto shrink-0 flex items-center gap-1 px-3 py-2 text-xs font-bold uppercase tracking-widest text-sage-600 hover:text-sage-700 transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            手動新增
+          </button>
         </div>
 
-        <div className="p-4 sm:p-8 space-y-4 sm:space-y-5">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-4 sm:space-y-5">
           {/* ── Screenshot tab ── */}
           {importMode === 'screenshot' && (
             <div className="space-y-4">
               <div className="flex gap-3 text-xs leading-relaxed text-natural-500 bg-natural-50 p-4 rounded-xl border border-natural-200">
                 <Info className="w-4 h-4 shrink-0 text-sage-500 mt-0.5" />
-                <span>上傳病患清單截圖（需包含床號、病歷號、姓名、年齡），AI 將自動解析並建立病患。已存在的病歷號將自動略過。</span>
+                <span>上傳病患清單截圖（需包含床號、病歷號、姓名、年齡），AI 將自動解析並建立病患。已存在的病歷號自動略過；<strong>未出現在截圖中的在院病患將轉為出院</strong>（確認前會再詢問）。</span>
               </div>
 
               {/* Drop zone */}
@@ -274,9 +283,9 @@ export default function ImportModal({ onImport, onCancel }: ImportModalProps) {
 
               {/* Extracted result table */}
               {extractedRows && extractedRows.length > 0 && (
-                <div className="border border-natural-200 rounded-xl overflow-hidden">
+                <div className="border border-natural-200 rounded-xl overflow-hidden max-h-64 overflow-y-auto">
                   <table className="w-full text-xs">
-                    <thead className="bg-natural-100 text-natural-500 uppercase tracking-wider">
+                    <thead className="sticky top-0 bg-natural-100 text-natural-500 uppercase tracking-wider">
                       <tr>
                         <th className="px-4 py-2 text-left font-bold">床號</th>
                         <th className="px-4 py-2 text-left font-bold">病歷號</th>

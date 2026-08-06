@@ -66,7 +66,7 @@ service cloud.firestore {
              'name', 'bedNumber', 'age', 'gender', 'chartNumber',
              'admissionDate', 'diagnosis', 'status', 'updatedAt',
              'dailyChecks', 'clinicalPearls', 'briefing',
-             'opDate', 'opProcedure',
+             'opDate', 'opProcedure', 'dischargeDate',
              'medications', 'labTests', 'examinations',
              // legacy fields kept for backward compat
              'admissionDiagnosis', 'preliminaryDiagnosis', 'treatmentPlan'

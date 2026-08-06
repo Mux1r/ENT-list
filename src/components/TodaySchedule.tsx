@@ -6,6 +6,8 @@ import { format, startOfWeek, addDays } from 'date-fns';
 interface Props {
   patients: Patient[];
   onSelect: (id: string) => void;
+  tab: 'op' | 'todo';
+  onTabChange: (tab: 'op' | 'todo') => void;
 }
 
 const sameDay = (iso: string, day: string) => {
@@ -25,7 +27,7 @@ export const weekOps = (patients: Patient[], now = new Date()) => {
   });
 };
 
-/** 當天沒記錄、或記錄裡還有沒打勾的項目 */
+/** 該天記錄裡還沒打勾的項目。沒記錄＝沒事要做，不列入 */
 export const pendingTodos = (patients: Patient[], day: string) =>
   activeOnly(patients)
     .map(p => {
@@ -34,13 +36,12 @@ export const pendingTodos = (patients: Patient[], day: string) =>
       const undone = (check?.notes ?? [])
         .map(n => (typeof n === 'string' ? { text: n as string, completed: false } : n))
         .filter(n => !n.completed);
-      return { p, noCheck: !check, undone };
+      return { p, undone };
     })
-    .filter(x => x.noCheck || x.undone.length > 0);
+    .filter(x => x.undone.length > 0);
 
-export default function TodaySchedule({ patients, onSelect }: Props) {
+export default function TodaySchedule({ patients, onSelect, tab, onTabChange }: Props) {
   const today = format(new Date(), 'yyyy-MM-dd');
-  const [tab, setTab] = useState<'op' | 'todo'>('op');
   const [pickedDay, setPickedDay] = useState(today);
   const [weekOffset, setWeekOffset] = useState(0);
 
@@ -52,7 +53,7 @@ export default function TodaySchedule({ patients, onSelect }: Props) {
     setWeekOffset(weekOffset + delta);
     setPickedDay(next.some(d => d.day === today) ? today : next[0].day);
   };
-  const todo = pendingTodos(patients, today);
+  const todo = pendingTodos(patients, pickedDay);
 
   const Row: React.FC<{ id: string; bed: string; name: string; children: React.ReactNode }> = ({ id, bed, name, children }) => (
     <button
@@ -74,30 +75,16 @@ export default function TodaySchedule({ patients, onSelect }: Props) {
     <p className="py-10 text-center text-xs font-bold uppercase tracking-widest text-natural-300">{text}</p>
   );
 
+  // 日期點下的小字跟著分頁走：手術看台數、待辦看未完成人數
+  const dayCount = (day: string, ops: Patient[]) =>
+    tab === 'op' ? ops.length : pendingTodos(patients, day).length;
+
   const TABS = [
-    { key: 'op' as const, label: '手術', icon: <Scissors className="w-3.5 h-3.5" />, count: week.reduce((n, d) => n + d.ops.length, 0) },
+    { key: 'op' as const, label: '手術', icon: <Scissors className="w-3.5 h-3.5" />, count: picked.ops.length },
     { key: 'todo' as const, label: '待辦', icon: <ClipboardList className="w-3.5 h-3.5" />, count: todo.length },
   ];
 
   return (
-    <div className="space-y-3">
-      <div className="flex gap-1 border-b border-natural-200">
-        {TABS.map(t => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold uppercase tracking-widest border-b-2 -mb-px transition-colors ${
-              tab === t.key ? 'border-sage-500 text-natural-800' : 'border-transparent text-natural-400 hover:text-natural-600'
-            }`}
-          >
-            {t.icon}
-            {t.label}
-            <span className="text-[10px] text-natural-300">{t.count}</span>
-          </button>
-        ))}
-      </div>
-
-      {tab === 'op' ? (
         <div className="bg-white rounded-2xl border border-natural-200 shadow-sm overflow-hidden">
           {/* 週切換 */}
           <div className="flex items-center justify-between px-2 sm:px-4 pt-2 sm:pt-3 bg-natural-50/60">
@@ -135,31 +122,49 @@ export default function TodaySchedule({ patients, onSelect }: Props) {
                   >
                     {format(new Date(day), 'd')}
                   </span>
-                  <span className={`text-[10px] font-bold ${ops.length === 0 ? 'text-natural-200' : isPicked ? 'text-sage-600' : 'text-clay-500'}`}>
-                    {ops.length === 0 ? '—' : `${ops.length} 台`}
-                  </span>
+                  {(() => {
+                    const n = dayCount(day, ops);
+                    return (
+                      <span className={`text-[10px] font-bold ${n === 0 ? 'text-natural-200' : isPicked ? 'text-sage-600' : 'text-clay-500'}`}>
+                        {n === 0 ? '—' : `${n} ${tab === 'op' ? '台' : '位'}`}
+                      </span>
+                    );
+                  })()}
                 </button>
               );
             })}
           </div>
 
-          {picked.ops.length === 0
-            ? empty('這天沒有排刀')
-            : picked.ops.map(p => (
-                <Row key={p.id} id={p.id} bed={p.bedNumber} name={p.name}>
-                  <p className="text-xs text-natural-500 mt-0.5">{p.opProcedure || '術式未填'}</p>
-                </Row>
-              ))}
-        </div>
-      ) : (
-        <div className="bg-white rounded-2xl border border-natural-200 shadow-sm overflow-hidden">
-          {todo.length === 0
-            ? empty('全部完成')
-            : todo.map(({ p, noCheck, undone }) => (
-                <Row key={p.id} id={p.id} bed={p.bedNumber} name={p.name}>
-                  {noCheck ? (
-                    <p className="text-xs text-terracotta-500 mt-0.5 font-bold">今日尚未記錄</p>
-                  ) : (
+          {/* 分頁：日期選好後再切手術／待辦 */}
+          <div className="flex gap-1 px-2 sm:px-4 border-b border-natural-100">
+            {TABS.map(t => (
+              <button
+                key={t.key}
+                onClick={() => onTabChange(t.key)}
+                className={`flex items-center gap-2 px-3 sm:px-4 py-2.5 text-xs font-bold uppercase tracking-widest border-b-2 -mb-px transition-colors ${
+                  tab === t.key ? 'border-sage-500 text-natural-800' : 'border-transparent text-natural-400 hover:text-natural-600'
+                }`}
+              >
+                {t.icon}
+                {t.label}
+                <span className="text-[10px] text-natural-300">{t.count}</span>
+              </button>
+            ))}
+          </div>
+
+          {tab === 'op' ? (
+            picked.ops.length === 0
+              ? empty('這天沒有排刀')
+              : picked.ops.map(p => (
+                  <Row key={p.id} id={p.id} bed={p.bedNumber} name={p.name}>
+                    <p className="text-xs text-natural-500 mt-0.5">{p.opProcedure || '術式未填'}</p>
+                  </Row>
+                ))
+          ) : (
+            todo.length === 0
+              ? empty('全部完成')
+              : todo.map(({ p, undone }) => (
+                  <Row key={p.id} id={p.id} bed={p.bedNumber} name={p.name}>
                     <ul className="mt-1 space-y-0.5">
                       {undone.map((n, i) => (
                         <li key={i} className="text-xs text-natural-500 flex items-start gap-1.5">
@@ -168,11 +173,9 @@ export default function TodaySchedule({ patients, onSelect }: Props) {
                         </li>
                       ))}
                     </ul>
-                  )}
-                </Row>
-              ))}
+                  </Row>
+                ))
+          )}
         </div>
-      )}
-    </div>
   );
 }

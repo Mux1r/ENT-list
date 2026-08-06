@@ -1015,31 +1015,35 @@ export default function PatientDetails({ patient, onUpdate, onDelete, editHeader
             {tabBar(openAddExam, day => (patient.examinations || []).filter(e => e.orderedDate === day).length)}
             <div className="px-3 sm:px-5 pb-4 pt-3 border-t border-natural-50">
                   {(() => {
-                    const exams = patient.examinations || [];
+                    // 新的排前面；日期缺漏的沉底
+                    const exams = [...(patient.examinations || [])]
+                      .sort((a, b) => (b.orderedDate || '').localeCompare(a.orderedDate || ''));
                     return (
                       <div className="space-y-3">
                         {exams.length === 0 && <p className="text-xs text-natural-300 italic py-2">尚無檢查紀錄</p>}
+                        {/* 只露日期＋名稱，報告內容點開才看 —— 用原生 details，不用自己管展開狀態 */}
                         {exams.map(exam => (
-                          <div key={exam.id} className="p-3 bg-natural-50 rounded-xl border border-natural-100">
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                  <p className="text-sm font-bold text-natural-900">{exam.name}</p>
-                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${exam.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-sage-100 text-sage-700'}`}>
-                                    {exam.status === 'pending' ? '待報告' : '已回報'}
-                                  </span>
-                                </div>
-                                <p className="text-[10px] text-natural-400 mb-1">{exam.orderedDate}</p>
-                                {exam.finding && <p className="text-xs text-natural-600 italic">{exam.finding}</p>}
-                              </div>
+                          <details key={exam.id} className="group p-3 bg-natural-50 rounded-xl border border-natural-100">
+                            <summary className="flex items-center gap-2 cursor-pointer list-none [&::-webkit-details-marker]:hidden">
+                              <span className="text-[10px] text-natural-400 shrink-0 tabular-nums">{exam.orderedDate}</span>
+                              <span className="text-sm font-bold text-natural-900 truncate">{exam.name}</span>
+                              {exam.status === 'pending' && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 shrink-0">待報告</span>
+                              )}
                               {editData && (
-                                <div className="flex gap-1 shrink-0">
-                                  <button onClick={() => openEditExam(exam)} className="p-1.5 text-natural-300 hover:text-sage-500 transition-colors"><Edit3 className="w-3.5 h-3.5" /></button>
-                                  <button onClick={() => deleteExam(exam.id, exam.name)} className="p-1.5 text-natural-200 hover:text-terracotta-400 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                                <div className="flex gap-1 shrink-0 ml-auto">
+                                  <button onClick={(e) => { e.preventDefault(); openEditExam(exam); }} className="p-1.5 text-natural-300 hover:text-sage-500 transition-colors"><Edit3 className="w-3.5 h-3.5" /></button>
+                                  <button onClick={(e) => { e.preventDefault(); deleteExam(exam.id, exam.name); }} className="p-1.5 text-natural-200 hover:text-terracotta-400 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
                                 </div>
                               )}
-                            </div>
-                          </div>
+                              {exam.finding && (
+                                <ChevronDown className={`w-3.5 h-3.5 text-natural-300 shrink-0 transition-transform group-open:rotate-180 ${editData ? '' : 'ml-auto'}`} />
+                              )}
+                            </summary>
+                            {exam.finding && (
+                              <p className="mt-2 pt-2 border-t border-natural-100 text-xs text-natural-600 whitespace-pre-wrap">{exam.finding}</p>
+                            )}
+                          </details>
                         ))}
                       </div>
                     );

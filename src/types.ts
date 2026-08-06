@@ -72,6 +72,7 @@ dailyChecks: ENTChecklist[];
   // ponytail: 單場刀。一人多場/多天要排的話再改成 operations[]
   opDate?: string;       // YYYY-MM-DD
   opProcedure?: string;  // 術式
+  dischargeDate?: string; // YYYY-MM-DD 預計出院日，沒定就留空
   // kept optional for backward compat with existing Firestore docs
   admissionDiagnosis?: string;
   preliminaryDiagnosis?: string;
