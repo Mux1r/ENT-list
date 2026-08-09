@@ -35,15 +35,20 @@ const nextWeek = weekOps([p({ name: '下週戊', opDate: d(7), opProcedure: 'Sep
 assert.equal(nextWeek[0].day, d(7));
 assert.deepEqual(nextWeek.map(x => x.ops.length), [1, 0, 0, 0, 0, 0, 0]);
 
-// ── 待辦：只列當天記錄裡沒打勾的，全打勾或當天沒記錄都不算有事要做
+// ── 待辦：不分天累積，同文字只留一筆，全完成的病患沉到最後，出院的不列入
 const todo = pendingTodos([
-  p({ name: '未完甲', dailyChecks: [{ id: 'a', date: nowIso, notes: [{ text: '拔 drain', completed: false }, { text: '已做的', completed: true }] }] }),
   p({ name: '全完乙', dailyChecks: [{ id: 'b', date: nowIso, notes: [{ text: '已做的', completed: true }] }] }),
-  p({ name: '沒紀錄丙', dailyChecks: [{ id: 'c', date: yesterdayIso, notes: [{ text: '昨天的', completed: false }] }] }),
-  p({ name: '出院丁', status: 'Discharged' }),
-], today);
-assert.deepEqual(todo.map(x => x.p.name), ['未完甲']);
-assert.deepEqual(todo[0].undone.map(n => n.text), ['拔 drain']);
+  p({ name: '未完甲', dailyChecks: [
+    { id: 'a1', date: yesterdayIso, notes: [{ text: '拔 drain', completed: false }, { text: '已做的', completed: true }] },
+    { id: 'a2', date: nowIso, notes: [{ text: '拔 drain', completed: false }, { text: '換藥', completed: true }] },
+  ] }),
+  p({ name: '沒紀錄丙', dailyChecks: [] }),
+  p({ name: '出院丁', status: 'Discharged', dailyChecks: [{ id: 'd', date: nowIso, notes: [{ text: '不該出現', completed: false }] }] }),
+]);
+assert.deepEqual(todo.map(x => x.p.name), ['未完甲', '全完乙']);   // 沒完成的排前面
+assert.deepEqual(todo[0].undone.map(n => n.text), ['拔 drain']);   // 跨天同一項只算一筆
+assert.deepEqual(todo[0].done.map(n => n.text), ['已做的', '換藥']);
+assert.deepEqual(todo[1].undone, []);
 
 // ── 畫面：預設 手術 tab + 今日，七個日期點都在
 const html = renderToStaticMarkup(
@@ -59,18 +64,21 @@ assert.match(html, /今天甲[\s\S]*Thyroidectomy/);
 assert.doesNotMatch(html, /未完乙/);              // 待辦在另一個 tab
 assert.match(renderToStaticMarkup(<TodaySchedule patients={[]} onSelect={() => {}} tab="op" onTabChange={() => {}} />), /這天沒有排刀/);
 
-// ── 待辦 tab：只列有未完成項目的人，沒紀錄的完全不出現
+// ── 待辦 tab：不分天、沒有日期列，完成的畫刪除線
 const todoHtml = renderToStaticMarkup(
   <TodaySchedule
-    patients={[p({ name: '未完甲', dailyChecks: [{ id: 'c', date: nowIso, notes: [{ text: '拔 drain', completed: false }] }] }), p({ name: '沒紀錄丙', dailyChecks: [] })]}
+    patients={[
+      p({ name: '未完甲', dailyChecks: [{ id: 'c', date: yesterdayIso, notes: [{ text: '拔 drain', completed: false }, { text: '已做的', completed: true }] }] }),
+      p({ name: '沒紀錄丙', dailyChecks: [] }),
+    ]}
     onSelect={() => {}}
     tab="todo"
     onTabChange={() => {}}
   />
 );
-assert.match(todoHtml, /未完甲[\s\S]*拔 drain/);
-assert.doesNotMatch(todoHtml, /沒紀錄丙/);        // 沒記錄＝沒事要做
-// 日期選擇列在兩個 tab 都在，選中的是今天
-assert.equal((todoHtml.match(/sm:w-10 sm:h-10 rounded-full/g) || []).length, 7);
+assert.match(todoHtml, /未完甲[\s\S]*拔 drain/);      // 昨天的待辦今天還在
+assert.match(todoHtml, /line-through[\s\S]*已做的/);
+assert.doesNotMatch(todoHtml, /沒紀錄丙/);            // 沒記錄＝沒事要做
+assert.doesNotMatch(todoHtml, /sm:w-10 sm:h-10 rounded-full/);   // 待辦不分天，沒有日期列
 
 console.log('TodaySchedule ok');

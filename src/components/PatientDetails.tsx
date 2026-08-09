@@ -31,7 +31,7 @@ import {
 } from 'lucide-react';
 import { Medication, LabTest, Examination } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Patient, ENTChecklist } from '../types';
+import { Patient, ENTChecklist, STATUS_TONE, GENDER_TEXT } from '../types';
 import DailyChecklistForm from './DailyChecklistForm';
 import Markdown from './Markdown';
 import { format, differenceInCalendarDays, startOfWeek, addDays } from 'date-fns';
@@ -164,13 +164,6 @@ const GENDER_OPTIONS = [
   { value: 'Other',  label: 'O', triggerClass: '', dotColor: 'bg-natural-400' },
 ] as const;
 
-// 性別改用床號底色表示
-const GENDER_TONE: Record<string, string> = {
-  Male: 'bg-clinical-50 text-clinical-700 border-clinical-100',
-  Female: 'bg-blush-50 text-blush-600 border-blush-100',
-  Other: 'bg-natural-100 text-natural-500 border-natural-200',
-};
-
 type ConflictItem = {
   field: keyof Patient;
   label: string;
@@ -207,6 +200,8 @@ const normalizeNotes = (notes: ENTChecklist['notes'] | string | undefined): { te
 export default function PatientDetails({ patient, onUpdate, onDelete, editHeader, jsonOpen, onCloseJson }: PatientDetailsProps) {
   const [showChecklistForm, setShowChecklistForm] = useState(false);
   const [activeTab, setActiveTab] = useState('rounds');
+  // 查房卡片內部：待辦／評估項目
+  const [roundTab, setRoundTab] = useState<'todo' | 'assess'>('todo');
   // 各分頁預設唯讀，按下鉛筆才露出編輯/刪除
   const [editData, setEditData] = useState(false);
   // 分頁共用的「哪一天」；檢驗/檢查是累積資料，不受它影響
@@ -252,6 +247,7 @@ export default function PatientDetails({ patient, onUpdate, onDelete, editHeader
     diagnosis: patient.diagnosis || '',
     opDate: patient.opDate || '',
     opProcedure: patient.opProcedure || '',
+    dischargeDate: patient.dischargeDate || '',
   });
 
   React.useEffect(() => {
@@ -264,8 +260,9 @@ export default function PatientDetails({ patient, onUpdate, onDelete, editHeader
       diagnosis: patient.diagnosis || '',
       opDate: patient.opDate || '',
       opProcedure: patient.opProcedure || '',
+      dischargeDate: patient.dischargeDate || '',
     });
-  }, [patient.id, patient.name, patient.bedNumber, patient.chartNumber, patient.age, patient.admissionDate, patient.diagnosis, patient.opDate, patient.opProcedure]);
+  }, [patient.id, patient.name, patient.bedNumber, patient.chartNumber, patient.age, patient.admissionDate, patient.diagnosis, patient.opDate, patient.opProcedure, patient.dischargeDate]);
 
   const handleLocalChange = (field: keyof typeof localFields, value: string) => {
     setLocalFields(prev => ({ ...prev, [field]: value }));
@@ -597,15 +594,18 @@ export default function PatientDetails({ patient, onUpdate, onDelete, editHeader
   };
   // ───────────────────────────────────────────────────────────────
 
-  // 各分頁第一列：新增（圖示）· 日期 · 編輯開關。dayCount 為週曆上每一天的筆數，不給就不顯示數字
-  const tabBar = (onAdd: () => void, dayCount?: (day: string) => number) => {
+  // 各分頁第一列：新增（圖示）· 日期 · 編輯開關。dayCount 為週曆上每一天的筆數，不給就不顯示數字。
+  // onAdd 給 null 代表該分頁沒有「新增」，用 leftSlot 放別的按鈕（交班分頁放複製）
+  const tabBar = (onAdd: (() => void) | null, dayCount?: (day: string) => number, leftSlot?: React.ReactNode) => {
     const week = Array.from({ length: 7 }, (_, i) => format(addDays(weekStart, i), 'yyyy-MM-dd'));
     return (
       <>
         <div className="flex items-center px-2 py-2">
-          <button onClick={onAdd} title="新增" className="p-2 rounded-lg text-sage-600 hover:bg-sage-50 transition-colors">
-            <Plus className="w-4 h-4" />
-          </button>
+          {onAdd ? (
+            <button onClick={onAdd} title="新增" className="p-2 rounded-lg text-sage-600 hover:bg-sage-50 transition-colors">
+              <Plus className="w-4 h-4" />
+            </button>
+          ) : leftSlot}
           <button
             onClick={() => setShowWeek(v => !v)}
             className={`flex-1 mx-1 py-1.5 rounded-lg text-xs font-bold uppercase tracking-widest transition-colors ${
@@ -685,7 +685,8 @@ export default function PatientDetails({ patient, onUpdate, onDelete, editHeader
             disabled={!editHeader}
             onChange={(e) => handleLocalChange('bedNumber', e.target.value)}
             onBlur={() => syncField('bedNumber', localFields.bedNumber)}
-            className={`px-2 py-0.5 rounded border text-xs font-bold uppercase tracking-wider focus:ring-1 focus:ring-sage-500 focus:outline-hidden [field-sizing:content] min-w-[32px] ${GENDER_TONE[patient.gender] ?? GENDER_TONE.Other}`}
+            title={(STATUS_TONE[patient.status] ?? STATUS_TONE.Discharged).label}
+            className={`px-2 py-0.5 rounded border-2 text-xs font-bold uppercase tracking-wider text-center whitespace-nowrap focus:ring-1 focus:ring-sage-500 focus:outline-hidden [field-sizing:content] min-w-16 ${(STATUS_TONE[patient.status] ?? STATUS_TONE.Discharged).chip}`}
           />
           <input
             value={localFields.name}
@@ -693,7 +694,7 @@ export default function PatientDetails({ patient, onUpdate, onDelete, editHeader
             onChange={(e) => handleLocalChange('name', e.target.value)}
             onBlur={() => syncField('name', localFields.name)}
             placeholder="病患姓名"
-            className={`text-lg text-natural-900 bg-transparent border-b focus:border-sage-500 focus:outline-hidden [field-sizing:content] min-w-[80px] ${editHeader ? 'border-natural-200' : 'border-transparent'}`}
+            className={`text-lg bg-transparent border-b focus:border-sage-500 focus:outline-hidden [field-sizing:content] min-w-[80px] ${GENDER_TEXT[patient.gender] ?? GENDER_TEXT.Other} ${editHeader ? 'border-natural-200' : 'border-transparent'}`}
           />
           <span className="flex items-baseline gap-0.5">
             <input
@@ -702,37 +703,62 @@ export default function PatientDetails({ patient, onUpdate, onDelete, editHeader
               disabled={!editHeader}
               onChange={(e) => handleLocalChange('age', e.target.value)}
               onBlur={() => syncField('age', parseInt(localFields.age) || 0)}
-              className={`[field-sizing:content] min-w-[20px] text-sm font-bold text-natural-500 bg-transparent border-b focus:border-sage-500 focus:outline-hidden text-right appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${editHeader ? 'border-natural-200' : 'border-transparent'}`}
+              className={`[field-sizing:content] min-w-[20px] text-xs text-natural-400 bg-transparent border-b focus:border-sage-500 focus:outline-hidden text-right appearance-none [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${editHeader ? 'border-natural-200' : 'border-transparent'}`}
             />
-            {editHeader ? (
+            {/* 性別平常由姓名顏色表達，只有編輯時才露出選單 */}
+            {editHeader && (
               <DropdownSelect
                 value={patient.gender}
                 onChange={(v) => syncField('gender', v)}
                 options={GENDER_OPTIONS as unknown as { value: string; label: string; triggerClass: string; dotColor: string }[]}
                 bare
               />
-            ) : (
-              <span className="text-sm font-bold text-natural-500">
-                {GENDER_OPTIONS.find(o => o.value === patient.gender)?.label ?? 'O'}
-              </span>
             )}
           </span>
-          <span className="w-1.5" />
-          <DropdownSelect
-            value={patient.status}
-            onChange={(v) => syncField('status', v)}
-            options={STATUS_OPTIONS as unknown as { value: string; label: string; triggerClass: string; dotColor: string }[]}
-            compact
-          />
-          </div>
-          {pod !== null && (
-            <span
-              className="shrink-0 self-start px-2 py-0.5 rounded-full border border-clay-400 text-clay-600 text-[10px] font-bold uppercase tracking-wider"
-              title={`手術日 ${patient.opDate}${patient.opProcedure ? `：${patient.opProcedure}` : ''}`}
-            >
-              POD {pod}
-            </span>
+          {/* 狀態平常由床號底色表達（同主頁），只有編輯時才露出選單 */}
+          {editHeader && (
+            <>
+              <span className="w-1.5" />
+              <DropdownSelect
+                value={patient.status}
+                onChange={(v) => syncField('status', v)}
+                options={STATUS_OPTIONS as unknown as { value: string; label: string; triggerClass: string; dotColor: string }[]}
+                compact
+              />
+            </>
           )}
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0 self-start">
+            {/* ponytail: 出院日 badge 上面疊一層透明的 date input —— 點哪裡都直接開原生日期選單，
+                不用自己寫彈窗。要清空就用選單自帶的清除鈕。 */}
+            {(patient.dischargeDate || editHeader) && (
+              <span
+                className={`relative px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wider whitespace-nowrap ${
+                  patient.dischargeDate
+                    ? 'border-clinical-100 bg-clinical-50 text-clinical-700'
+                    : 'border-dashed border-natural-200 text-natural-300'
+                }`}
+                title="預計出院日（點擊修改）"
+              >
+                {patient.dischargeDate ? `出院 ${patient.dischargeDate.slice(5).replace('-', '/')}` : '＋ 出院日'}
+                <input
+                  type="date"
+                  value={localFields.dischargeDate}
+                  onChange={(e) => handleLocalChange('dischargeDate', e.target.value)}
+                  onBlur={() => syncField('dischargeDate', localFields.dischargeDate)}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                />
+              </span>
+            )}
+            {pod !== null && (
+              <span
+                className="px-2 py-0.5 rounded-full border border-clay-400 text-clay-600 text-[10px] font-bold uppercase tracking-wider"
+                title={`手術日 ${patient.opDate}${patient.opProcedure ? `：${patient.opProcedure}` : ''}`}
+              >
+                POD {pod}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Row 2: diagnosis */}
@@ -784,6 +810,7 @@ export default function PatientDetails({ patient, onUpdate, onDelete, editHeader
             className="flex-1 min-w-[120px] text-natural-400 bg-transparent border-b border-transparent hover:border-natural-200 focus:border-sage-500 focus:outline-hidden placeholder-natural-200"
           />
         </div>
+
       </div>
 
       {/* ═══ Tabs ═══ */}
@@ -816,19 +843,33 @@ export default function PatientDetails({ patient, onUpdate, onDelete, editHeader
         </div>
 
         {/* ── 交班報告 ── */}
-        {activeTab === 'briefing' && patient.briefing && (
+        {activeTab === 'briefing' && (patient.briefing || editData) && (
           <div className="bg-white rounded-2xl border border-natural-200 shadow-sm overflow-hidden">
-            <div className="flex justify-end">
+            {/* ponytail: briefing 是整份病患一份，不分天 —— 日期列在這裡只是切換各分頁共用的 selectedDay。
+                之後真的要一天一份交班，改成 briefings[] by date 再讓這條日期列有作用 */}
+            {tabBar(null, undefined, (
               <button
                 onClick={() => { navigator.clipboard.writeText(patient.briefing || ''); setBriefingCopied(true); setTimeout(() => setBriefingCopied(false), 1500); }}
-                className="px-4 py-3 text-xs font-bold text-sage-600 hover:bg-sage-50 transition-colors flex items-center gap-1"
+                title="複製"
+                className="p-2 rounded-lg text-sage-600 hover:bg-sage-50 transition-colors"
               >
-                {briefingCopied ? <CheckIcon className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                {briefingCopied ? '已複製' : '複製'}
+                {briefingCopied ? <CheckIcon className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
               </button>
-            </div>
+            ))}
             <div className="px-3 sm:px-5 pb-4 border-t border-natural-50 pt-3">
-              <Markdown text={patient.briefing} />
+              {/* ponytail: 編輯就是直接改 markdown 原始碼，離開輸入框才寫回 Firestore。
+                  不做所見即所得編輯器；真的需要再換 @uiw/react-md-editor 之類的。 */}
+              {editData ? (
+                <textarea
+                  key={patient.id}
+                  defaultValue={patient.briefing || ''}
+                  onBlur={e => { if (e.target.value !== (patient.briefing || '')) onUpdate({ ...patient, briefing: e.target.value }); }}
+                  placeholder="交班報告（markdown：# 標題、**粗體**、- 清單、| 表格 |）"
+                  className="w-full min-h-[60vh] p-3 bg-natural-50 border border-natural-200 rounded-xl font-mono text-xs leading-relaxed text-natural-800 placeholder-natural-300 resize-y focus:outline-hidden focus:border-sage-500 focus:ring-1 focus:ring-sage-500"
+                />
+              ) : (
+                <Markdown text={patient.briefing!} />
+              )}
             </div>
           </div>
         )}
@@ -1090,7 +1131,52 @@ export default function PatientDetails({ patient, onUpdate, onDelete, editHeader
                                     </button>
                                     )}
 
-                                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                                    {/* 卡片內的小分頁：待辦／評估項目 */}
+                                    <div className="flex gap-1 border-b border-natural-100 -mt-1">
+                                      {([['todo', '待辦'], ['assess', '評估項目']] as const).map(([key, label]) => (
+                                        <button
+                                          key={key}
+                                          onClick={() => setRoundTab(key)}
+                                          className={`px-3 py-2 text-xs font-bold uppercase tracking-widest border-b-2 -mb-px transition-colors ${
+                                            roundTab === key ? 'border-sage-500 text-natural-800' : 'border-transparent text-natural-400 hover:text-natural-600'
+                                          }`}
+                                        >
+                                          {label}
+                                          <span className="ml-2 text-[10px] text-natural-300">
+                                            {key === 'todo'
+                                              ? normalizeNotes(check.notes).filter(n => !n.completed).length
+                                              : CHECK_FIELDS.filter(f => check[f.key] !== undefined).length}
+                                          </span>
+                                        </button>
+                                      ))}
+
+                                      {/* 新增按鈕貼在分頁列右側，不另外佔一行 */}
+                                      {roundTab === 'todo' ? (
+                                        <button
+                                          onClick={() => {
+                                            const notesArray = normalizeNotes(check.notes);
+                                            handleCheckFieldUpdate(check.id, 'notes', [...notesArray, { text: '', completed: false }]);
+                                          }}
+                                          className="ml-auto self-center p-1.5 text-sage-500 hover:bg-sage-50 rounded transition-all"
+                                          title="新增待辦"
+                                        >
+                                          <Plus className="w-3.5 h-3.5" />
+                                        </button>
+                                      ) : editData && CHECK_FIELDS.some(f => check[f.key] === undefined) && (
+                                        <select
+                                          value=""
+                                          onChange={e => { const f = CHECK_FIELDS.find(x => x.key === e.target.value); if (f) handleCheckFieldUpdate(check.id, f.key, f.add); }}
+                                          className="ml-auto self-center text-[10px] font-bold text-natural-400 bg-transparent cursor-pointer hover:text-sage-600 transition-colors focus:outline-hidden"
+                                        >
+                                          <option value="">＋ 評估項目</option>
+                                          {CHECK_FIELDS.filter(f => check[f.key] === undefined).map(f => (
+                                            <option key={f.key} value={f.key}>{f.label}</option>
+                                          ))}
+                                        </select>
+                                      )}
+                                    </div>
+
+                                    <div className={`grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 ${roundTab === 'assess' ? '' : 'hidden'}`}>
                                       {CHECK_FIELDS.filter(f => check[f.key] !== undefined).map(f => {
                                         const raw = check[f.key] as string | number | boolean | undefined;
                                         const isBool = typeof f.add === 'boolean';
@@ -1136,37 +1222,18 @@ export default function PatientDetails({ patient, onUpdate, onDelete, editHeader
                                           </div>
                                         );
                                       })}
-                                      {editData && CHECK_FIELDS.some(f => check[f.key] === undefined) && (
-                                        <select
-                                          value=""
-                                          onChange={e => { const f = CHECK_FIELDS.find(x => x.key === e.target.value); if (f) handleCheckFieldUpdate(check.id, f.key, f.add); }}
-                                          className="text-[10px] font-bold text-natural-400 bg-natural-50 border border-dashed border-natural-200 rounded-xl px-2 py-2.5 cursor-pointer hover:border-sage-400 hover:text-sage-600 transition-colors focus:outline-hidden"
-                                        >
-                                          <option value="">＋ 評估項目</option>
-                                          {CHECK_FIELDS.filter(f => check[f.key] === undefined).map(f => (
-                                            <option key={f.key} value={f.key}>{f.label}</option>
-                                          ))}
-                                        </select>
-                                      )}
                                     </div>
 
-                                    <div className="flex-1 shrink-0 pt-6 lg:pt-0 lg:pl-8 lg:border-l border-natural-100 max-w-md">
-                                      {editData && (
-                                        <div className="flex justify-end items-center mb-3">
-                                          <button
-                                            onClick={() => {
-                                              const notesArray = normalizeNotes(check.notes);
-                                              handleCheckFieldUpdate(check.id, 'notes', [...notesArray, { text: '', completed: false }]);
-                                            }}
-                                            className="p-1 text-sage-500 hover:bg-sage-50 rounded transition-all"
-                                          >
-                                            <Plus className="w-3 h-3" />
-                                          </button>
-                                        </div>
-                                      )}
+                                    <div className={`flex-1 shrink-0 max-w-md ${roundTab === 'todo' ? '' : 'hidden'}`}>
                                       <ul className="space-y-2">
-                                        {(normalizeNotes(check.notes)).map((noteRaw, idx, notes) => {
-                                          const note = typeof noteRaw === 'string' ? { text: noteRaw, completed: false } : noteRaw;
+                                        {/* 完成的沉到最下面；idx 保持原陣列位置，改動才寫得回去 */}
+                                        {(() => {
+                                          const notes = normalizeNotes(check.notes);
+                                          return notes
+                                            .map((raw, idx) => ({ idx, note: typeof raw === 'string' ? { text: raw, completed: false } : raw }))
+                                            .sort((a, b) => Number(a.note.completed) - Number(b.note.completed));
+                                        })().map(({ note, idx }) => {
+                                          const notes = normalizeNotes(check.notes);
                                           return (
                                             <li
                                               key={idx}
@@ -1205,25 +1272,23 @@ export default function PatientDetails({ patient, onUpdate, onDelete, editHeader
                                               <div className="flex-1 min-w-0">
                                                 <input
                                                   value={note.text}
-                                                  readOnly={!editData}
+                                                  placeholder="待辦…"
                                                   onChange={(e) => handleUpdateNoteText(check.id, idx, e.target.value)}
-                                                  className={`w-full bg-transparent text-sm font-medium leading-tight focus:outline-hidden border-b border-transparent read-only:hover:border-transparent hover:border-natural-100 focus:border-sage-400 ${
-                                                    note.completed ? 'line-through text-natural-400' : 'text-natural-900 italic'
+                                                  className={`w-full bg-transparent text-sm font-medium leading-tight focus:outline-hidden border-b border-transparent hover:border-natural-100 focus:border-sage-400 placeholder-natural-300 ${
+                                                    note.completed ? 'line-through text-natural-400' : 'text-natural-900'
                                                   }`}
                                                 />
                                               </div>
 
-                                              {editData && (
-                                                <button
-                                                  onClick={() => {
-                                                    const notesArray = normalizeNotes(check.notes);
-                                                    handleCheckFieldUpdate(check.id, 'notes', notesArray.filter((_, i) => i !== idx));
-                                                  }}
-                                                  className="opacity-100 sm:opacity-0 sm:group-hover/item:opacity-100 p-1 text-natural-300 hover:text-terracotta-500 transition-all shrink-0"
-                                                >
-                                                  <Trash2 className="w-3 h-3" />
-                                                </button>
-                                              )}
+                                              <button
+                                                onClick={() => {
+                                                  const notesArray = normalizeNotes(check.notes);
+                                                  handleCheckFieldUpdate(check.id, 'notes', notesArray.filter((_, i) => i !== idx));
+                                                }}
+                                                className="opacity-100 sm:opacity-0 sm:group-hover/item:opacity-100 p-1 text-natural-300 hover:text-terracotta-500 transition-all shrink-0"
+                                              >
+                                                <Trash2 className="w-3 h-3" />
+                                              </button>
                                             </li>
                                           );
                                         })}

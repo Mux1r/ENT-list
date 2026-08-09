@@ -27,18 +27,26 @@ export const weekOps = (patients: Patient[], now = new Date()) => {
   });
 };
 
-/** 該天記錄裡還沒打勾的項目。沒記錄＝沒事要做，不列入 */
-export const pendingTodos = (patients: Patient[], day: string) =>
+/**
+ * 不分天，把每位病患所有記錄裡的待辦累積起來。
+ * 同樣文字只留一筆，任一天沒打勾就算沒完成；沒完成的排前面，病患也是。
+ */
+export const pendingTodos = (patients: Patient[]) =>
   activeOnly(patients)
     .map(p => {
-      const check = p.dailyChecks?.find(c => sameDay(c.date, day));
-      // 舊資料的 notes 可能是純字串
-      const undone = (check?.notes ?? [])
-        .map(n => (typeof n === 'string' ? { text: n as string, completed: false } : n))
-        .filter(n => !n.completed);
-      return { p, undone };
+      const byText = new Map<string, boolean>();   // text -> completed
+      for (const c of p.dailyChecks ?? []) {
+        // 舊資料的 notes 可能是純字串
+        for (const raw of c.notes ?? []) {
+          const n = typeof raw === 'string' ? { text: raw as string, completed: false } : raw;
+          byText.set(n.text, (byText.get(n.text) ?? true) && n.completed);
+        }
+      }
+      const all = [...byText].map(([text, completed]) => ({ text, completed }));
+      return { p, undone: all.filter(n => !n.completed), done: all.filter(n => n.completed) };
     })
-    .filter(x => x.undone.length > 0);
+    .filter(x => x.undone.length + x.done.length > 0)
+    .sort((a, b) => Number(a.undone.length === 0) - Number(b.undone.length === 0));
 
 export default function TodaySchedule({ patients, onSelect, tab, onTabChange }: Props) {
   const today = format(new Date(), 'yyyy-MM-dd');
@@ -53,7 +61,8 @@ export default function TodaySchedule({ patients, onSelect, tab, onTabChange }: 
     setWeekOffset(weekOffset + delta);
     setPickedDay(next.some(d => d.day === today) ? today : next[0].day);
   };
-  const todo = pendingTodos(patients, pickedDay);
+  const todo = pendingTodos(patients);
+  const undoneCount = todo.reduce((n, x) => n + x.undone.length, 0);
 
   const Row: React.FC<{ id: string; bed: string; name: string; children: React.ReactNode }> = ({ id, bed, name, children }) => (
     <button
@@ -75,17 +84,15 @@ export default function TodaySchedule({ patients, onSelect, tab, onTabChange }: 
     <p className="py-10 text-center text-xs font-bold uppercase tracking-widest text-natural-300">{text}</p>
   );
 
-  // 日期點下的小字跟著分頁走：手術看台數、待辦看未完成人數
-  const dayCount = (day: string, ops: Patient[]) =>
-    tab === 'op' ? ops.length : pendingTodos(patients, day).length;
-
   const TABS = [
     { key: 'op' as const, label: '手術', icon: <Scissors className="w-3.5 h-3.5" />, count: picked.ops.length },
-    { key: 'todo' as const, label: '待辦', icon: <ClipboardList className="w-3.5 h-3.5" />, count: todo.length },
+    { key: 'todo' as const, label: '待辦', icon: <ClipboardList className="w-3.5 h-3.5" />, count: undoneCount },
   ];
 
   return (
         <div className="bg-white rounded-2xl border border-natural-200 shadow-sm overflow-hidden">
+          {/* 日期只有手術用得到，待辦是不分天的累積清單 */}
+          {tab === 'op' && (<>
           {/* 週切換 */}
           <div className="flex items-center justify-between px-2 sm:px-4 pt-2 sm:pt-3 bg-natural-50/60">
             <button onClick={() => goWeek(-1)} className="p-1.5 rounded-lg text-natural-300 hover:text-sage-600 hover:bg-white transition-colors">
@@ -122,20 +129,16 @@ export default function TodaySchedule({ patients, onSelect, tab, onTabChange }: 
                   >
                     {format(new Date(day), 'd')}
                   </span>
-                  {(() => {
-                    const n = dayCount(day, ops);
-                    return (
-                      <span className={`text-[10px] font-bold ${n === 0 ? 'text-natural-200' : isPicked ? 'text-sage-600' : 'text-clay-500'}`}>
-                        {n === 0 ? '—' : `${n} ${tab === 'op' ? '台' : '位'}`}
-                      </span>
-                    );
-                  })()}
+                  <span className={`text-[10px] font-bold ${ops.length === 0 ? 'text-natural-200' : isPicked ? 'text-sage-600' : 'text-clay-500'}`}>
+                    {ops.length === 0 ? '—' : `${ops.length} 台`}
+                  </span>
                 </button>
               );
             })}
           </div>
+          </>)}
 
-          {/* 分頁：日期選好後再切手術／待辦 */}
+          {/* 分頁 */}
           <div className="flex gap-1 px-2 sm:px-4 border-b border-natural-100">
             {TABS.map(t => (
               <button
@@ -162,13 +165,20 @@ export default function TodaySchedule({ patients, onSelect, tab, onTabChange }: 
                 ))
           ) : (
             todo.length === 0
-              ? empty('全部完成')
-              : todo.map(({ p, undone }) => (
+              ? empty('沒有待辦')
+              : todo.map(({ p, undone, done }) => (
                   <Row key={p.id} id={p.id} bed={p.bedNumber} name={p.name}>
                     <ul className="mt-1 space-y-0.5">
                       {undone.map((n, i) => (
                         <li key={i} className="text-xs text-natural-500 flex items-start gap-1.5">
                           <span className="w-1.5 h-1.5 rounded-full bg-terracotta-400 shrink-0 mt-1.5" />
+                          {n.text}
+                        </li>
+                      ))}
+                      {/* 完成的沉在最下面 */}
+                      {done.map((n, i) => (
+                        <li key={`d${i}`} className="text-xs text-natural-300 line-through flex items-start gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-natural-200 shrink-0 mt-1.5" />
                           {n.text}
                         </li>
                       ))}

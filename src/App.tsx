@@ -26,7 +26,7 @@ import {
   X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Patient, ENTChecklist } from './types';
+import { Patient, ENTChecklist, STATUS_TONE, GENDER_TEXT } from './types';
 import PatientDetails from './components/PatientDetails';
 import PatientForm from './components/PatientForm';
 import ImportModal from './components/ImportModal';
@@ -48,13 +48,7 @@ import {
 } from 'firebase/firestore';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { differenceInCalendarDays } from 'date-fns';
-
-// 床號標籤顯示狀態，性別靠姓名的顏色表達
-const GENDER_TEXT: Record<string, string> = {
-  Male: 'text-clinical-700',
-  Female: 'text-blush-600',
-  Other: 'text-natural-500',
-};
+import { wardOf } from './wards';
 
 // 排序用的臨床優先序（與 STATUS_TONE 的顯示順序無關）
 const STATUS_ORDER: Record<string, number> = {
@@ -69,14 +63,6 @@ const WEEKDAY = ['日', '一', '二', '三', '四', '五', '六'];
 const byBed = (a: Patient, b: Patient) =>
   a.bedNumber.localeCompare(b.bedNumber, undefined, { numeric: true });
 
-// dot 給彈窗用，chip 給清單上的床號標籤用（只有框線和字帶色，不填底）
-const STATUS_TONE: Record<string, { label: string; dot: string; chip: string }> = {
-  // 框線用飽和色 + 半透明：色相夠鮮，明度還是淡的
-  Stable: { label: 'Stable', dot: 'bg-sage-400', chip: 'text-sage-700 border-sage-500/45' },
-  Critical: { label: 'Critical', dot: 'bg-terracotta-500', chip: 'text-terracotta-700 border-terracotta-500/45' },
-  'Discharge Pending': { label: 'Discharge Pending', dot: 'bg-clinical-500', chip: 'text-clinical-700 border-clinical-500/45' },
-  Discharged: { label: 'Discharged', dot: 'bg-natural-300', chip: 'text-natural-500 border-natural-400/40' },
-};
 const STATUS_VALUES = Object.keys(STATUS_TONE) as Patient['status'][];
 
 export default function App() {
@@ -767,8 +753,11 @@ export default function App() {
                     <p className="text-natural-400 font-bold uppercase tracking-widest text-xs">尚無病患資料</p>
                   </div>
                 ) : (
-                  sortedPatients.map(patient => {
+                  sortedPatients.map((patient, i) => {
                     const isSelected = selectedIds.has(patient.id);
+                    // 病房換了就插一條分隔線（任何排序方式都成立，只是可能重複出現）
+                    const ward = wardOf(patient.bedNumber);
+                    const newWard = i === 0 || ward !== wardOf(sortedPatients[i - 1].bedNumber);
                     const status = STATUS_TONE[patient.status] ?? STATUS_TONE.Discharged;
                     // 手術當天 = POD 0。T00:00 解析成當地午夜，跨時區不會差一天
                     const opDay = patient.opDate ? new Date(patient.opDate + 'T00:00') : null;
@@ -780,7 +769,15 @@ export default function App() {
                       : pod < 0 ? `OP ${patient.opDate!.slice(5).replace('-', '/')} (${WEEKDAY[opDay!.getDay()]})`
                       : `POD ${pod}`;
                     return (
-                      <div key={patient.id} className="bg-white rounded-lg border border-natural-200 shadow-xs overflow-hidden">
+                      <React.Fragment key={patient.id}>
+                      {newWard && (
+                        <div className="flex items-center gap-3 pt-1">
+                          <span className="h-px flex-1 bg-natural-200" />
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-natural-400">{ward}</span>
+                          <span className="h-px flex-1 bg-natural-200" />
+                        </div>
+                      )}
+                      <div className="bg-white rounded-lg border border-natural-200 shadow-xs overflow-hidden">
                         <div
                           onClick={isEditMode ? () => toggleSelect(patient.id) : undefined}
                           className={`flex items-center gap-2 sm:gap-3 px-3 sm:px-6 py-3.5 sm:py-4 transition-colors ${
@@ -852,6 +849,7 @@ export default function App() {
                           </div>
                         </div>
                       </div>
+                      </React.Fragment>
                     );
                   })
                 )}
@@ -982,23 +980,69 @@ export default function App() {
                   <button onClick={() => setShowPatientSwitcher(false)} className="text-natural-300 hover:text-natural-600 transition-colors text-xs font-bold">✕</button>
                 </div>
                 <div className="flex-1 overflow-y-auto">
-                  {patients.filter(p => p.status !== 'Discharged').map(patient => (
+                  {/* 用主頁同一份排序結果，順序才一致；床號色票／病房分隔線也跟主頁一致 */}
+                  {sortedPatients.map((patient, i) => {
+                    const ward = wardOf(patient.bedNumber);
+                    const newWard = i === 0 || ward !== wardOf(sortedPatients[i - 1].bedNumber);
+                    const status = STATUS_TONE[patient.status] ?? STATUS_TONE.Discharged;
+                    // 抽屜窄，badge 只留數字／日期，標題寫全稱
+                    const opDay = patient.opDate ? new Date(patient.opDate + 'T00:00') : null;
+                    const pod = opDay && !isNaN(opDay.getTime())
+                      ? differenceInCalendarDays(new Date(), opDay)
+                      : null;
+                    return (
+                    <React.Fragment key={patient.id}>
+                    {newWard && (
+                      <div className="flex items-center gap-3 px-5 pt-3 pb-1">
+                        <span className="h-px flex-1 bg-natural-200" />
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-natural-400">{ward}</span>
+                        <span className="h-px flex-1 bg-natural-200" />
+                      </div>
+                    )}
                     <button
-                      key={patient.id}
                       onClick={() => { setSelectedPatientId(patient.id); setShowPatientSwitcher(false); }}
-                      className={`w-full flex items-center gap-3 px-5 py-3.5 text-left transition-colors border-b border-natural-50 last:border-b-0 ${
+                      className={`w-full flex items-center gap-3 px-5 py-3 text-left transition-colors ${
                         patient.id === selectedPatientId ? 'bg-sage-50' : 'hover:bg-natural-50'
                       }`}
                     >
-                      <span className="text-[9px] font-bold text-sage-600 bg-sage-50 border border-sage-100 px-1.5 py-0.5 rounded uppercase tracking-wider min-w-12 text-center shrink-0 whitespace-nowrap">
+                      <span
+                        title={status.label}
+                        className={`px-2 py-0.5 rounded border-2 text-xs font-bold uppercase tracking-wider shrink-0 min-w-16 text-center whitespace-nowrap ${status.chip}`}
+                      >
                         {patient.bedNumber}
                       </span>
-                      <div className="min-w-0">
-                        <p className={`text-sm font-bold truncate ${patient.id === selectedPatientId ? 'text-sage-700' : 'text-natural-900'}`}>{patient.name}</p>
-                        <p className="text-[10px] text-natural-400 truncate">{patient.age}y · {patient.diagnosis?.slice(0, 28)}{(patient.diagnosis?.length ?? 0) > 28 ? '…' : ''}</p>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline gap-2">
+                          {/* 姓名顏色 = 性別，與主頁同一套 */}
+                          <span className={`text-sm truncate ${GENDER_TEXT[patient.gender] ?? GENDER_TEXT.Other}`}>{patient.name}</span>
+                          <span className="text-xs text-natural-400 shrink-0">{patient.age}</span>
+                        </div>
+                        <p className="text-xs text-natural-500 truncate mt-0.5">{patient.diagnosis || '—'}</p>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        {patient.dischargeDate && (
+                          <span
+                            title={`預計出院日 ${patient.dischargeDate}`}
+                            className="px-1.5 py-0.5 rounded-full border border-clinical-100 bg-clinical-50 text-clinical-700 text-[10px] font-bold tracking-wider whitespace-nowrap"
+                          >
+                            {patient.dischargeDate.slice(5).replace('-', '/')}
+                          </span>
+                        )}
+                        {pod !== null && (
+                          <span
+                            title={pod < 0 ? `手術日 ${patient.opDate}` : `POD ${pod}`}
+                            className={`px-1.5 py-0.5 rounded-full border text-[10px] font-bold tracking-wider whitespace-nowrap ${
+                              pod <= 0 ? 'bg-clay-100 border-clay-300 text-clay-700' : 'bg-clay-50 border-clay-200 text-clay-500'
+                            }`}
+                          >
+                            {pod < 0 ? patient.opDate!.slice(5).replace('-', '/') : pod}
+                          </span>
+                        )}
                       </div>
                     </button>
-                  ))}
+                    </React.Fragment>
+                    );
+                  })}
                 </div>
               </motion.div>
             </>

@@ -19,6 +19,8 @@ export default function DailyChecklistForm({ initialData, day, onSubmit, onCance
     date: day ? new Date(`${day}T${format(new Date(), 'HH:mm')}`).toISOString() : new Date().toISOString(),
     notes: [{ text: '', completed: false }]
   });
+  // 待辦／評估項目分開填，與查房卡片的小分頁一致
+  const [tab, setTab] = useState<'todo' | 'assess'>('todo');
 
   useEffect(() => {
     if (initialData) {
@@ -99,22 +101,34 @@ export default function DailyChecklistForm({ initialData, day, onSubmit, onCance
       animate={{ opacity: 1, height: 'auto' }}
       className="bg-white rounded-2xl border border-natural-200 shadow-xl overflow-hidden mb-8"
     >
-      <div className={`p-4 sm:p-6 text-white flex justify-between items-center border-b transition-colors duration-500 ${initialData ? 'bg-sage-600 border-sage-700' : 'bg-sage-600 border-sage-700'}`}>
-        <div>
-          <h3 className="text-xl font-serif font-bold tracking-tight">
-            {initialData ? 'Edit Ward Round Record' : 'Record Daily Evaluation'}
-          </h3>
-          <p className={`text-[10px] font-bold uppercase tracking-widest mt-1 ${initialData ? 'text-sage-100' : 'text-sage-100'}`}>
-            Ward Round: {format(new Date(formData.date || new Date()), 'yyyy-MM-dd HH:mm')}
-          </p>
-        </div>
+      <div className="px-4 sm:px-6 py-2 text-white flex justify-end items-center border-b bg-sage-600 border-sage-700">
         <button onClick={onCancel} className="text-white opacity-60 hover:opacity-100 transition-opacity">
-          <X className="w-6 h-6" />
+          <X className="w-5 h-5" />
         </button>
       </div>
 
       <form onSubmit={handleSubmit} className="p-4 sm:p-8 space-y-6 sm:space-y-8">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 text-natural-600">
+        <div className="flex gap-1 border-b border-natural-100">
+          {([['todo', '待辦'], ['assess', '評估項目']] as const).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setTab(key)}
+              className={`px-3 py-2 text-xs font-bold uppercase tracking-widest border-b-2 -mb-px transition-colors ${
+                tab === key ? 'border-sage-500 text-natural-800' : 'border-transparent text-natural-400 hover:text-natural-600'
+              }`}
+            >
+              {label}
+              <span className="ml-2 text-[10px] text-natural-300">
+                {key === 'todo'
+                  ? (formData.notes || []).filter(n => n.text.trim() !== '' && !n.completed).length
+                  : Object.entries(formData).filter(([k, v]) => k !== 'date' && k !== 'id' && k !== 'notes' && v !== undefined).length}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <div className={`grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8 text-natural-600 ${tab === 'assess' ? '' : 'hidden'}`}>
           {/* Column 1: Primary Vitals */}
           <div className="space-y-6">
              <div>
@@ -235,7 +249,10 @@ export default function DailyChecklistForm({ initialData, day, onSubmit, onCance
                </div>
              </div>
 
-             <div>
+          </div>
+        </div>
+
+        <div className={`max-w-md ${tab === 'todo' ? '' : 'hidden'}`}>
                <div className="flex justify-between items-center mb-3">
                  <label className="block text-[10px] font-bold text-natural-400 uppercase tracking-widest">Rounding Checklist</label>
                  <button 
@@ -312,8 +329,6 @@ export default function DailyChecklistForm({ initialData, day, onSubmit, onCance
                    ))}
                  </AnimatePresence>
                </div>
-             </div>
-          </div>
         </div>
 
         <div className="flex justify-end gap-3 pt-6 border-t border-natural-100">
