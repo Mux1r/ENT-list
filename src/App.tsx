@@ -6,6 +6,7 @@ import {
   Ear,
   ClipboardList,
   ChevronRight,
+  ChevronDown,
   Stethoscope,
   Menu,
   FileUp,
@@ -23,10 +24,11 @@ import {
   DoorOpen,
   Check,
   Pencil,
+  Scissors,
   X
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Patient, ENTChecklist, STATUS_TONE, GENDER_TEXT } from './types';
+import { Patient, ENTChecklist, STATUS_TONE, GENDER_TEXT, relDay, asText } from './types';
 import PatientDetails from './components/PatientDetails';
 import PatientForm from './components/PatientForm';
 import ImportModal from './components/ImportModal';
@@ -58,7 +60,7 @@ const STATUS_ORDER: Record<string, number> = {
   Discharged: 3,
 };
 
-const WEEKDAY = ['日', '一', '二', '三', '四', '五', '六'];
+
 
 const byBed = (a: Patient, b: Patient) =>
   a.bedNumber.localeCompare(b.bedNumber, undefined, { numeric: true });
@@ -72,6 +74,7 @@ export default function App() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showSidebar, setShowSidebar] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);   // topbar 上直接切畫面的下拉
   const [showSchedule, setShowSchedule] = useState(false);
   // 提到 App：從排程點進病患再返回時，分頁狀態要留著
   const [scheduleTab, setScheduleTab] = useState<'op' | 'todo'>('op');
@@ -152,7 +155,7 @@ export default function App() {
           labTests: [],
           examinations: [],
           ...data,
-          diagnosis: data.diagnosis || data.admissionDiagnosis || '',
+          diagnosis: asText(data.diagnosis || data.admissionDiagnosis),
           id: doc.id,
         } as Patient);
       });
@@ -165,6 +168,12 @@ export default function App() {
   }, [user]);
 
   const selectedPatient = patients.find(p => p.id === selectedPatientId);
+
+  // 還有沒勾掉的待辦 → 床號上點一顆小紅點。舊資料的 note 可能是純字串。
+  const hasTodo = (p: Patient) =>
+    (p.dailyChecks || []).some(c => (c.notes || []).some((n: any) =>
+      typeof n === 'string' ? n.trim() !== '' : !n.completed && (n.text || '').trim() !== ''
+    ));
 
   // 剛按出院的先留在清單上，重整後才歸到出院清單 —— 免得點下去人就不見了
   const stillHere = (p: Patient) => p.status !== 'Discharged' || justDischarged.has(p.id);
@@ -186,6 +195,24 @@ export default function App() {
 
   const dischargedCount = patients.filter(p => p.status === 'Discharged').length;
   const activeCount = patients.filter(stillHere).length;
+
+  // 三個主畫面 +（還沒做的）臨床指引。sidebar 與 topbar 的下拉共用這張表。
+  const currentView = showSchedule ? 'schedule' : showDischarged ? 'discharged' : 'list';
+  const NAV = [
+    { key: 'list', label: '病患列表', icon: <Users className="w-4 h-4 shrink-0" />, count: activeCount },
+    { key: 'schedule', label: '今日排程', icon: <ClipboardList className="w-4 h-4 shrink-0" /> },
+    { key: 'discharged', label: '出院清單', icon: <DoorOpen className="w-4 h-4 shrink-0" />, count: dischargedCount },
+    { key: 'guide', label: '臨床指引', icon: <Stethoscope className="w-4 h-4 shrink-0" />, todo: true },
+  ] as { key: string; label: string; icon: React.ReactNode; count?: number; todo?: boolean }[];
+  const goNav = (key: string) => {
+    setNavOpen(false);
+    setShowSidebar(false);
+    if (key === 'guide') return;   // 還沒做
+    setSelectedPatientId(null);
+    setShowSchedule(key === 'schedule');
+    setShowDischarged(key === 'discharged');
+    setIsEditMode(false);
+  };
 
   const handleUpdatePatient = async (updatedPatient: Patient) => {
     if (!user) return;
@@ -494,12 +521,44 @@ export default function App() {
                 </div>
               </>
             ) : (
-              <span className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-natural-500">
-                {showSchedule ? '今日排程' : showDischarged ? '出院清單' : '病患列表'}
-                {!showSchedule && (
-                  <span className="text-[10px] text-natural-300">{showDischarged ? dischargedCount : activeCount}</span>
+              /* 功能名稱本身就是切換入口，不用先開 sidebar */
+              <div className="relative">
+                <button
+                  onClick={() => setNavOpen(v => !v)}
+                  className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-natural-500 hover:text-sage-600 transition-colors"
+                >
+                  {NAV.find(n => n.key === currentView)!.label}
+                  {!showSchedule && (
+                    <span className="text-[10px] text-natural-300">{showDischarged ? dischargedCount : activeCount}</span>
+                  )}
+                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${navOpen ? 'rotate-180' : ''}`} />
+                </button>
+                {navOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setNavOpen(false)} />
+                    <motion.div
+                      initial={{ opacity: 0, y: -6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="absolute top-full left-0 mt-2 bg-white rounded-xl border border-natural-200 shadow-xl overflow-hidden z-50 min-w-40"
+                    >
+                      {NAV.map(n => (
+                        <button
+                          key={n.key}
+                          onClick={() => goNav(n.key)}
+                          disabled={n.todo}
+                          className={`w-full flex items-center gap-3 px-4 py-2.5 text-xs font-bold text-left transition-colors disabled:opacity-40 ${
+                            n.key === currentView ? 'bg-sage-50 text-sage-700' : 'text-natural-600 hover:bg-natural-50'
+                          }`}
+                        >
+                          {n.icon}
+                          {n.label}
+                          {n.count !== undefined && <span className="ml-auto text-[10px] text-natural-300">{n.count}</span>}
+                        </button>
+                      ))}
+                    </motion.div>
+                  </>
                 )}
-              </span>
+              </div>
             )}
           </div>
 
@@ -708,6 +767,7 @@ export default function App() {
                 <TodaySchedule
                   patients={patients}
                   onSelect={setSelectedPatientId}
+                  onUpdate={handleUpdatePatient}
                   tab={scheduleTab}
                   onTabChange={setScheduleTab}
                 />
@@ -764,9 +824,9 @@ export default function App() {
                     const pod = opDay && !isNaN(opDay.getTime())
                       ? differenceInCalendarDays(new Date(), opDay)
                       : null;
-                    // 還沒開的刀講 POD -3 很怪，直接寫日期跟星期
+                    // 還沒開的刀講 POD -3 很怪，改寫日期（今／明／後）＋剪刀
                     const opLabel = pod === null ? null
-                      : pod < 0 ? `OP ${patient.opDate!.slice(5).replace('-', '/')} (${WEEKDAY[opDay!.getDay()]})`
+                      : pod <= 0 ? relDay(patient.opDate!)
                       : `POD ${pod}`;
                     return (
                       <React.Fragment key={patient.id}>
@@ -799,9 +859,15 @@ export default function App() {
                                 disabled={isEditMode}
                                 onClick={() => setStatusPick({ patient, sel: patient.status })}
                                 title={`${status.label}（點擊變更）`}
-                                className={`px-2 py-0.5 rounded border-2 text-xs font-bold uppercase tracking-wider shrink-0 min-w-16 text-center whitespace-nowrap transition-colors disabled:pointer-events-none ${status.chip}`}
+                                className={`relative px-2 py-0.5 rounded border-2 text-xs font-bold uppercase tracking-wider shrink-0 min-w-16 text-center whitespace-nowrap transition-colors disabled:pointer-events-none ${status.chip}`}
                               >
                                 {patient.bedNumber}
+                                {hasTodo(patient) && (
+                                  <span
+                                    title="有未完成的待辦"
+                                    className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-terracotta-500 ring-2 ring-white"
+                                  />
+                                )}
                               </button>
                               <button
                                 disabled={isEditMode}
@@ -821,21 +887,23 @@ export default function App() {
                                 <button
                                   disabled={isEditMode}
                                   onClick={() => setDischargePlan({ id: patient.id, name: patient.name, date: patient.dischargeDate! })}
-                                  className="shrink-0 px-2 py-0.5 rounded-full border border-clinical-100 bg-clinical-50 text-clinical-700 text-[10px] font-bold uppercase tracking-wider whitespace-nowrap disabled:pointer-events-none"
-                                  title="預計出院日（點擊修改）"
+                                  className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-clinical-100 bg-clinical-50 text-clinical-700 text-[10px] font-bold uppercase tracking-wider whitespace-nowrap disabled:pointer-events-none"
+                                  title={`預計出院日 ${patient.dischargeDate}（點擊修改）`}
                                 >
-                                  出院 {patient.dischargeDate.slice(5).replace('-', '/')}
+                                  {relDay(patient.dischargeDate)}
+                                  <DoorOpen className="w-2.5 h-2.5" />
                                 </button>
                               )}
                               {opLabel && (
                                 <span
-                                  className={`shrink-0 px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wider whitespace-nowrap ${
+                                  className={`shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wider whitespace-nowrap ${
                                     // 今天開或還沒開 → 深色提醒；術後同色系但淡一階
                                     pod! <= 0 ? 'bg-clay-100 border-clay-300 text-clay-700' : 'bg-clay-50 border-clay-200 text-clay-500'
                                   }`}
                                   title={`手術日 ${patient.opDate}${patient.opProcedure ? `：${patient.opProcedure}` : ''}`}
                                 >
                                   {opLabel}
+                                  {pod! <= 0 && <Scissors className="w-2.5 h-2.5" />}
                                 </span>
                               )}
                             </div>
@@ -866,6 +934,7 @@ export default function App() {
                 <PatientDetails
                   patient={selectedPatient}
                   onUpdate={handleUpdatePatient}
+                  onStatusChange={handleStatusChange}
                   onDelete={handleDeletePatient}
                   editHeader={editHeader}
                   jsonOpen={jsonOpen}
@@ -902,39 +971,21 @@ export default function App() {
                 </div>
 
                 <div className="flex-1 px-3 py-4 space-y-1">
-                  <button
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
-                      !selectedPatientId && !showSchedule && !showDischarged ? 'bg-sage-100 text-sage-700' : 'text-natural-400 hover:bg-white hover:text-natural-600'
-                    }`}
-                    onClick={() => { setSelectedPatientId(null); setShowSchedule(false); setShowDischarged(false); setIsEditMode(false); setShowSidebar(false); }}
-                  >
-                    <Users className="w-4 h-4 shrink-0" />
-                    病患列表
-                    <span className="ml-auto text-[10px] text-natural-300">{activeCount}</span>
-                  </button>
-                  <button
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
-                      !selectedPatientId && showSchedule ? 'bg-sage-100 text-sage-700' : 'text-natural-400 hover:bg-white hover:text-natural-600'
-                    }`}
-                    onClick={() => { setSelectedPatientId(null); setShowSchedule(true); setIsEditMode(false); setShowSidebar(false); }}
-                  >
-                    <ClipboardList className="w-4 h-4 shrink-0" />
-                    今日排程
-                  </button>
-                  <button
-                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
-                      !selectedPatientId && !showSchedule && showDischarged ? 'bg-sage-100 text-sage-700' : 'text-natural-400 hover:bg-white hover:text-natural-600'
-                    }`}
-                    onClick={() => { setSelectedPatientId(null); setShowSchedule(false); setShowDischarged(true); setIsEditMode(false); setShowSidebar(false); }}
-                  >
-                    <DoorOpen className="w-4 h-4 shrink-0" />
-                    出院清單
-                    <span className="ml-auto text-[10px] text-natural-300">{dischargedCount}</span>
-                  </button>
-                  <button className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold text-natural-400 hover:bg-white hover:text-natural-600 transition-all">
-                    <Stethoscope className="w-4 h-4 shrink-0" />
-                    臨床指引
-                  </button>
+                  {NAV.map(n => (
+                    <button
+                      key={n.key}
+                      onClick={() => goNav(n.key)}
+                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-bold transition-all ${
+                        !selectedPatientId && !n.todo && n.key === currentView
+                          ? 'bg-sage-100 text-sage-700'
+                          : 'text-natural-400 hover:bg-white hover:text-natural-600'
+                      }`}
+                    >
+                      {n.icon}
+                      {n.label}
+                      {n.count !== undefined && <span className="ml-auto text-[10px] text-natural-300">{n.count}</span>}
+                    </button>
+                  ))}
                 </div>
 
                 <div className="p-4 border-t border-natural-200">
@@ -1023,19 +1074,21 @@ export default function App() {
                         {patient.dischargeDate && (
                           <span
                             title={`預計出院日 ${patient.dischargeDate}`}
-                            className="px-1.5 py-0.5 rounded-full border border-clinical-100 bg-clinical-50 text-clinical-700 text-[10px] font-bold tracking-wider whitespace-nowrap"
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border border-clinical-100 bg-clinical-50 text-clinical-700 text-[10px] font-bold tracking-wider whitespace-nowrap"
                           >
-                            {patient.dischargeDate.slice(5).replace('-', '/')}
+                            {relDay(patient.dischargeDate)}
+                            <DoorOpen className="w-2.5 h-2.5" />
                           </span>
                         )}
                         {pod !== null && (
                           <span
-                            title={pod < 0 ? `手術日 ${patient.opDate}` : `POD ${pod}`}
-                            className={`px-1.5 py-0.5 rounded-full border text-[10px] font-bold tracking-wider whitespace-nowrap ${
+                            title={pod <= 0 ? `手術日 ${patient.opDate}` : `POD ${pod}`}
+                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border text-[10px] font-bold tracking-wider whitespace-nowrap ${
                               pod <= 0 ? 'bg-clay-100 border-clay-300 text-clay-700' : 'bg-clay-50 border-clay-200 text-clay-500'
                             }`}
                           >
-                            {pod < 0 ? patient.opDate!.slice(5).replace('-', '/') : pod}
+                            {pod <= 0 ? relDay(patient.opDate!) : `POD ${pod}`}
+                            {pod <= 0 && <Scissors className="w-2.5 h-2.5" />}
                           </span>
                         )}
                       </div>

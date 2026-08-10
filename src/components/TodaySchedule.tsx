@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
-import { Patient } from '../types';
-import { Scissors, ClipboardList, ChevronRight, ChevronLeft } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Patient, STATUS_TONE, GENDER_TEXT } from '../types';
+import { Scissors, ClipboardList, ChevronRight, ChevronLeft, Check } from 'lucide-react';
 import { format, startOfWeek, addDays } from 'date-fns';
 
 interface Props {
   patients: Patient[];
   onSelect: (id: string) => void;
+  onUpdate: (patient: Patient) => void;
   tab: 'op' | 'todo';
   onTabChange: (tab: 'op' | 'todo') => void;
 }
@@ -48,7 +49,19 @@ export const pendingTodos = (patients: Patient[]) =>
     .filter(x => x.undone.length + x.done.length > 0)
     .sort((a, b) => Number(a.undone.length === 0) - Number(b.undone.length === 0));
 
-export default function TodaySchedule({ patients, onSelect, tab, onTabChange }: Props) {
+/** 這裡的待辦是「同文字合併」的，勾掉就把所有記錄裡同一句話一起標成完成 */
+export const setTodoDone = (p: Patient, text: string, done: boolean): Patient => ({
+  ...p,
+  dailyChecks: (p.dailyChecks ?? []).map(c => ({
+    ...c,
+    notes: (c.notes ?? []).map(raw => {
+      const n = typeof raw === 'string' ? { text: raw as string, completed: false } : raw;
+      return n.text === text ? { ...n, completed: done } : n;
+    }),
+  })),
+});
+
+export default function TodaySchedule({ patients, onSelect, onUpdate, tab, onTabChange }: Props) {
   const today = format(new Date(), 'yyyy-MM-dd');
   const [pickedDay, setPickedDay] = useState(today);
   const [weekOffset, setWeekOffset] = useState(0);
@@ -64,21 +77,41 @@ export default function TodaySchedule({ patients, onSelect, tab, onTabChange }: 
   const todo = pendingTodos(patients);
   const undoneCount = todo.reduce((n, x) => n + x.undone.length, 0);
 
-  const Row: React.FC<{ id: string; bed: string; name: string; children: React.ReactNode }> = ({ id, bed, name, children }) => (
-    <button
-      onClick={() => onSelect(id)}
-      className="w-full flex items-start gap-2 sm:gap-3 px-3 sm:px-6 py-2.5 sm:py-3 text-left border-b border-natural-50 last:border-b-0 hover:bg-sage-50/50 transition-colors group"
-    >
-      <span className="text-[10px] font-bold text-sage-600 bg-sage-50 border border-sage-100 px-2 py-0.5 rounded uppercase tracking-wider w-16 shrink-0 text-center mt-0.5">
-        {bed}
-      </span>
-      <div className="flex-1 min-w-0">
-        <span className="font-bold text-natural-900">{name}</span>
-        {children}
-      </div>
-      <ChevronRight className="w-3.5 h-3.5 text-natural-200 group-hover:text-sage-400 shrink-0 mt-1" />
-    </button>
-  );
+  // 勾掉的待辦先留在畫面上（跟主頁的「剛出院」一樣），離開這頁才會不見
+  const [justDone, setJustDone] = useState<Set<string>>(new Set());
+  const doneKey = (id: string, text: string) => `${id}|${text}`;
+  const toggleTodo = (p: Patient, text: string, done: boolean) => {
+    setJustDone(prev => {
+      const next = new Set(prev);
+      if (done) next.add(doneKey(p.id, text)); else next.delete(doneKey(p.id, text));
+      return next;
+    });
+    onUpdate(setTodoDone(p, text, done));
+  };
+
+  // 勾一筆就重排的話畫面會跳。順序以「這次進頁面第一次看到的先後」為準，新出現的補在尾巴。
+  const seen = useRef<string[]>([]);
+  const rank = (key: string) => {
+    const i = seen.current.indexOf(key);
+    return i < 0 ? seen.current.push(key) - 1 : i;
+  };
+
+  // 床號＝狀態色、姓名＝性別色，與主頁同一套
+  const Head: React.FC<{ p: Patient }> = ({ p }) => {
+    const status = STATUS_TONE[p.status] ?? STATUS_TONE.Discharged;
+    return (
+      <>
+        <span
+          title={status.label}
+          className={`px-2 py-0.5 rounded border-2 text-xs font-bold uppercase tracking-wider shrink-0 min-w-16 text-center whitespace-nowrap ${status.chip}`}
+        >
+          {p.bedNumber}
+        </span>
+        <span className={`truncate ${GENDER_TEXT[p.gender] ?? GENDER_TEXT.Other}`}>{p.name}</span>
+        <span className="text-xs text-natural-400 shrink-0">{p.age}</span>
+      </>
+    );
+  };
 
   const empty = (text: string) => (
     <p className="py-10 text-center text-xs font-bold uppercase tracking-widest text-natural-300">{text}</p>
@@ -91,6 +124,23 @@ export default function TodaySchedule({ patients, onSelect, tab, onTabChange }: 
 
   return (
         <div className="bg-white rounded-2xl border border-natural-200 shadow-sm overflow-hidden">
+          {/* 分頁固定在最上面，日期列屬於手術分頁的內容 */}
+          <div className="flex gap-1 px-2 sm:px-4 border-b border-natural-100">
+            {TABS.map(t => (
+              <button
+                key={t.key}
+                onClick={() => onTabChange(t.key)}
+                className={`flex items-center gap-2 px-3 sm:px-4 py-2.5 text-xs font-bold uppercase tracking-widest border-b-2 -mb-px transition-colors ${
+                  tab === t.key ? 'border-sage-500 text-natural-800' : 'border-transparent text-natural-400 hover:text-natural-600'
+                }`}
+              >
+                {t.icon}
+                {t.label}
+                <span className="text-[10px] text-natural-300">{t.count}</span>
+              </button>
+            ))}
+          </div>
+
           {/* 日期只有手術用得到，待辦是不分天的累積清單 */}
           {tab === 'op' && (<>
           {/* 週切換 */}
@@ -138,54 +188,65 @@ export default function TodaySchedule({ patients, onSelect, tab, onTabChange }: 
           </div>
           </>)}
 
-          {/* 分頁 */}
-          <div className="flex gap-1 px-2 sm:px-4 border-b border-natural-100">
-            {TABS.map(t => (
-              <button
-                key={t.key}
-                onClick={() => onTabChange(t.key)}
-                className={`flex items-center gap-2 px-3 sm:px-4 py-2.5 text-xs font-bold uppercase tracking-widest border-b-2 -mb-px transition-colors ${
-                  tab === t.key ? 'border-sage-500 text-natural-800' : 'border-transparent text-natural-400 hover:text-natural-600'
-                }`}
-              >
-                {t.icon}
-                {t.label}
-                <span className="text-[10px] text-natural-300">{t.count}</span>
-              </button>
-            ))}
-          </div>
-
           {tab === 'op' ? (
             picked.ops.length === 0
               ? empty('這天沒有排刀')
               : picked.ops.map(p => (
-                  <Row key={p.id} id={p.id} bed={p.bedNumber} name={p.name}>
-                    <p className="text-xs text-natural-500 mt-0.5">{p.opProcedure || '術式未填'}</p>
-                  </Row>
+                  <button
+                    key={p.id}
+                    onClick={() => onSelect(p.id)}
+                    className="w-full flex items-center gap-2 sm:gap-3 px-3 sm:px-6 py-2.5 sm:py-3 text-left border-b border-natural-50 last:border-b-0 hover:bg-sage-50/50 transition-colors group"
+                  >
+                    <Head p={p} />
+                    <span className="text-xs text-natural-500 truncate">{p.opProcedure || '術式未填'}</span>
+                    <ChevronRight className="w-3.5 h-3.5 text-natural-200 group-hover:text-sage-400 shrink-0 ml-auto" />
+                  </button>
                 ))
-          ) : (
-            todo.length === 0
+          ) : (() => {
+            // 只列還沒完成的；剛剛在這頁勾掉的先留著
+            const rows = todo
+              .map(({ p, undone, done }) => ({
+                p,
+                items: [...undone, ...done.filter(n => justDone.has(doneKey(p.id, n.text)))]
+                  .sort((a, b) => rank(doneKey(p.id, a.text)) - rank(doneKey(p.id, b.text))),
+              }))
+              .filter(x => x.items.length > 0)
+              .sort((a, b) => rank(a.p.id) - rank(b.p.id));
+            return rows.length === 0
               ? empty('沒有待辦')
-              : todo.map(({ p, undone, done }) => (
-                  <Row key={p.id} id={p.id} bed={p.bedNumber} name={p.name}>
-                    <ul className="mt-1 space-y-0.5">
-                      {undone.map((n, i) => (
-                        <li key={i} className="text-xs text-natural-500 flex items-start gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-terracotta-400 shrink-0 mt-1.5" />
-                          {n.text}
-                        </li>
-                      ))}
-                      {/* 完成的沉在最下面 */}
-                      {done.map((n, i) => (
-                        <li key={`d${i}`} className="text-xs text-natural-300 line-through flex items-start gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-natural-200 shrink-0 mt-1.5" />
-                          {n.text}
-                        </li>
-                      ))}
+              : rows.map(({ p, items }) => (
+                  <div key={p.id} className="px-3 sm:px-6 py-2.5 sm:py-3 border-b border-natural-50 last:border-b-0">
+                    <button
+                      onClick={() => onSelect(p.id)}
+                      className="w-full flex items-center gap-2 sm:gap-3 text-left hover:bg-sage-50/50 -mx-1 px-1 rounded-lg transition-colors group"
+                    >
+                      <Head p={p} />
+                      <ChevronRight className="w-3.5 h-3.5 text-natural-200 group-hover:text-sage-400 shrink-0 ml-auto" />
+                    </button>
+                    <ul className="mt-1.5 space-y-1">
+                      {items.map(n => {
+                        const checked = n.completed || justDone.has(doneKey(p.id, n.text));
+                        return (
+                          <li key={n.text} className="flex items-start gap-2">
+                            <button
+                              onClick={() => toggleTodo(p, n.text, !checked)}
+                              title={checked ? '取消完成' : '標為完成'}
+                              className={`w-4 h-4 mt-0.5 rounded border flex items-center justify-center shrink-0 transition-colors ${
+                                checked ? 'bg-sage-400 border-sage-500' : 'bg-white border-natural-300 hover:border-sage-400'
+                              }`}
+                            >
+                              {checked && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
+                            </button>
+                            <span className={`text-xs ${checked ? 'text-natural-300 line-through' : 'text-natural-600'}`}>
+                              {n.text}
+                            </span>
+                          </li>
+                        );
+                      })}
                     </ul>
-                  </Row>
-                ))
-          )}
+                  </div>
+                ));
+          })()}
         </div>
   );
 }

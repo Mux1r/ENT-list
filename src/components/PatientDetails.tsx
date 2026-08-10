@@ -1,15 +1,10 @@
 ﻿import React, { useState, useRef, useEffect } from 'react';
 import {
-  User,
-  Activity,
   ClipboardList,
+  DoorOpen,
   FileText,
   Plus,
   Clock,
-  Thermometer,
-  CloudLightning,
-  Droplets,
-  Wind,
   Trash2,
   X,
   ChevronUp,
@@ -23,16 +18,12 @@ import {
   FlaskConical,
   Scan,
   Scissors,
-  AlertTriangle,
   Ban,
   Edit3,
-  MoreVertical,
-  Volume2
 } from 'lucide-react';
 import { Medication, LabTest, Examination } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Patient, ENTChecklist, STATUS_TONE, GENDER_TEXT } from '../types';
-import DailyChecklistForm from './DailyChecklistForm';
+import { Patient, ENTChecklist, STATUS_TONE, GENDER_TEXT, relDay, asText } from '../types';
 import Markdown from './Markdown';
 import { format, differenceInCalendarDays, startOfWeek, addDays } from 'date-fns';
 
@@ -53,18 +44,12 @@ labTests[] 每筆＝一個檢驗值（例：WBC、Crea、Na 各一筆）：
 examinations[] 每筆＝一項影像/檢查(如 CXR、CT Neck)：
 - name、orderedDate、status；選填 finding 報告內容
 
-dailyChecks[] 每筆＝某一天的查房評估（一天一筆，date 用該次查房日期）：
+dailyChecks[] 每筆＝某一天的查房待辦（一天一筆，date 用該次查房日期）：
 - date YYYY-MM-DDTHH:mm:ssZ（必填）
-- **以下全部選填，且「病歷沒明確評估到的項目，直接不要輸出該鍵」**——
-  未評估不等於正常，不可用正常值填補：
-  bleeding(None/Minor/Significant)、airway(Clear/Stridor/Obstructed)、
-  swallowing(Normal/Dysphagia/NPO)、facialNerve(Intact/Paresis/Paralysis)、
-  hoarseness(true/false)、drainAmount(數字cc)、woundStatus(Clean/Hyperemia/Discharge)、
-  painLevel(0-10)、fever(攝氏數字)、flap(Viable/Congested/Ischemic/Failed)、
-  tracheostomy(In situ/Capped/Decannulated)、calcium(數字 mg/dL)
-- 例：parotidectomy 病人若病歷只提到 wound 與 pain，就只輸出 woundStatus 與 painLevel，
-  不要附上 airway/swallowing/facialNerve
-- 選填 notes: [{ "text": "備註", "completed": false }]（未記載但值得提醒的事寫這裡）
+- notes: [{ "text": "待辦", "completed": false }]
+  —— 這天該做／該追的事，一件一則，例：「追 CT 報告」「明天拔 drain」「換藥」。
+  已經完成的寫 completed: true；沒事可列就給 []
+- 不要輸出其他欄位（bleeding、airway、painLevel 等評估項目一律不用產生）
 
 頂層另有：
 - diagnosis：優先「原文照抄」progress note 的 problem list（或 A/Assessment 段的診斷列），
@@ -93,59 +78,38 @@ const stripPreamble = (md: string) => {
   return i > 0 ? md.slice(i).trimStart() : md;
 };
 
-// 查房評估項目。全部選填 —— 值為 undefined 代表「未評估」，不渲染該格。
-type CheckFieldDef = {
-  key: keyof ENTChecklist;
-  label: string;
-  icon: React.ReactNode;
-  options?: string[];        // 有 options = 下拉；否則為數值
-  normal?: string;           // 下拉之正常值，其餘標紅
-  unit?: string;
-  step?: number;
-  abnormal?: (v: number) => boolean;
-  add: string | number | boolean;   // 從「未評估」新增時的起始值
-};
-
-const ICON_CLASS = 'w-3.5 h-3.5 text-natural-400';
-
-const CHECK_FIELDS: CheckFieldDef[] = [
-  { key: 'bleeding',     label: 'Bleeding', icon: <Droplets className={ICON_CLASS} />,        options: ['None', 'Minor', 'Significant'],          normal: 'None',    add: 'None' },
-  { key: 'airway',       label: 'Airway',   icon: <Wind className={ICON_CLASS} />,            options: ['Clear', 'Stridor', 'Obstructed'],        normal: 'Clear',   add: 'Clear' },
-  { key: 'fever',        label: 'Temp',     icon: <Thermometer className={ICON_CLASS} />,     unit: '°C',     step: 0.1, abnormal: v => v > 38,   add: 36.5 },
-  { key: 'drainAmount',  label: 'Drain',    icon: <Droplets className={ICON_CLASS} />,        unit: 'cc',                                          add: 0 },
-  { key: 'swallowing',   label: 'Swallow',  icon: <Activity className={ICON_CLASS} />,        options: ['Normal', 'Dysphagia', 'NPO'],            normal: 'Normal',  add: 'Normal' },
-  { key: 'facialNerve',  label: 'CN VII',   icon: <User className={ICON_CLASS} />,            options: ['Intact', 'Paresis', 'Paralysis'],        normal: 'Intact',  add: 'Intact' },
-  { key: 'painLevel',    label: 'Pain',     icon: <CloudLightning className={ICON_CLASS} />,  unit: '/10',               abnormal: v => v > 6,    add: 0 },
-  { key: 'hoarseness',   label: 'Hoarse',   icon: <Volume2 className={ICON_CLASS} />,         options: ['No', 'Yes'],                             normal: 'No',      add: false },
-  { key: 'woundStatus',  label: 'Wound',    icon: <AlertTriangle className={ICON_CLASS} />,   options: ['Clean', 'Hyperemia', 'Discharge'],       normal: 'Clean',   add: 'Clean' },
-  { key: 'flap',         label: 'Flap',     icon: <Scan className={ICON_CLASS} />,            options: ['Viable', 'Congested', 'Ischemic', 'Failed'], normal: 'Viable', add: 'Viable' },
-  { key: 'tracheostomy', label: 'Trach',    icon: <Wind className={ICON_CLASS} />,            options: ['In situ', 'Capped', 'Decannulated'],                        add: 'In situ' },
-  { key: 'calcium',      label: 'Ca',       icon: <FlaskConical className={ICON_CLASS} />,    unit: 'mg/dL', step: 0.1, abnormal: v => v < 8.5,  add: 9.0 },
+// 查房評估欄位。畫面上已不顯示（查房只留待辦），但匯入的資料照樣存著，
+// 這裡只用來判斷一筆紀錄是不是空的 —— 要重新做評估 UI 的話翻 git 記錄。
+const ASSESS_KEYS: (keyof ENTChecklist)[] = [
+  'bleeding', 'airway', 'fever', 'drainAmount', 'swallowing', 'facialNerve',
+  'painLevel', 'hoarseness', 'woundStatus', 'flap', 'tracheostomy', 'calcium',
 ];
 
-// 分頁。briefing 只在有交班報告時出現；badge 為各分頁的提醒數字。
-// label 只當 tooltip/aria 用；tab 本身只顯示 icon + 右上角數量
-const TABS: { key: string; label: string; icon: React.ReactNode; count?: (p: Patient) => number; tone?: string }[] = [
-  { key: 'briefing', label: '交班', icon: <FileText className="w-4 h-4" /> },
+// 分頁。badge 為右上角的提醒（數字或符號），回傳 0/'' 就不顯示。
+// label 只當 tooltip/aria 用；tab 本身只顯示 icon + 右上角提醒
+const TABS: { key: string; label: string; icon: React.ReactNode; badge?: (p: Patient) => number | string; tone?: string }[] = [
   {
-    key: 'med', label: '用藥（使用中）', icon: <Pill className="w-4 h-4" />,
-    count: p => (p.medications || []).filter(m => !m.endDate).length,
-    tone: 'bg-natural-200 text-natural-600',
+    key: 'briefing', label: '交班', icon: <FileText className="w-4 h-4" />,
+    // 交班報告沒打就用與「檢驗異常」同一支紅色提醒
+    badge: p => (p.briefing ? '' : '!'),
+    tone: 'bg-terracotta-500 text-white',
   },
+  { key: 'med', label: '用藥（使用中）', icon: <Pill className="w-4 h-4" /> },
   {
     key: 'lab', label: '檢驗（異常）', icon: <FlaskConical className="w-4 h-4" />,
-    count: p => (p.labTests || []).filter(l => l.isAbnormal).length,
+    badge: p => (p.labTests || []).filter(l => l.isAbnormal).length,
     tone: 'bg-terracotta-500 text-white',
   },
   {
     key: 'exam', label: '檢查（待結果）', icon: <Scan className="w-4 h-4" />,
-    count: p => (p.examinations || []).filter(e => e.status === 'pending').length,
+    badge: p => (p.examinations || []).filter(e => e.status === 'pending').length,
     tone: 'bg-amber-500 text-white',
   },
   {
     key: 'rounds', label: 'Daily Round', icon: <ClipboardList className="w-4 h-4" />,
-    count: p => p.dailyChecks?.length ?? 0,
-    tone: 'bg-natural-200 text-natural-600',
+    // 只提醒還沒勾掉的待辦，不是紀錄筆數
+    badge: p => (p.dailyChecks || []).flatMap(c => normalizeNotes(c.notes)).filter(n => !n.completed && n.text.trim()).length,
+    tone: 'bg-terracotta-500 text-white',
   },
 ];
 
@@ -184,6 +148,8 @@ const CONFLICT_FIELDS: { field: keyof Patient; label: string }[] = [
 interface PatientDetailsProps {
   patient: Patient;
   onUpdate: (patient: Patient) => void;
+  /** 改狀態走 App 那條：準出院會順手問預計出院日、出院會給復原提示 */
+  onStatusChange: (patient: Patient, status: Patient['status']) => void;
   onDelete: (id: string) => void;
   /** 這兩個開關的按鈕在 App 的 topbar，state 也放在那裡 */
   editHeader: boolean;
@@ -191,17 +157,59 @@ interface PatientDetailsProps {
   onCloseJson: () => void;
 }
 
+// 日期一律取「日曆日」比對，避免 dailyChecks.date 帶時間造成差一天
+export const dayOf = (iso: string) => {
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? '' : format(d, 'yyyy-MM-dd');
+};
+
+// 沒有任何評估項目、也沒有任何有字的待辦 = 空白，不算一筆紀錄
+export const isBlankCheck = (c: ENTChecklist) =>
+  ASSESS_KEYS.every(k => c[k] === undefined) && !normalizeNotes(c.notes).some(n => n.text.trim());
+
+// 某天的待辦清單 = 當天 + 之前每一天的待辦；未完成在上，已完成反灰沉到最下面（勾掉不會消失）。
+// 跨日的項目是「借看」原紀錄，不複製 —— 勾選時寫回它原本那天，才不會每天複製一份。
+// ponytail: 住院久了下面那疊已完成會越積越長，真的礙眼再加「只留最近 N 筆／收合」
+export const dayTodos = (checks: ENTChecklist[], day: string) =>
+  checks
+    .flatMap(c => normalizeNotes(c.notes).map((note, idx) => ({ checkId: c.id, day: dayOf(c.date), idx, note })))
+    .filter(t => t.day <= day)
+    .sort((a, b) => Number(a.note.completed) - Number(b.note.completed) || a.day.localeCompare(b.day));
+
+// 邊打邊存的文字欄位。值要繞一圈 Firestore 才回來，若直接把 prop 當 value，
+// 自動選字（選取整個字再替換）會被回程的舊值蓋掉 → 出現 rumortumor。
+// 所以值由本地持有，沒在編輯時才吃外部更新（例如匯入 JSON）。
+function LiveInput({ value, onChange, onEnter, autoFocus, className, placeholder }: {
+  value: string; onChange: (v: string) => void; onEnter?: () => void;
+  autoFocus?: boolean; className?: string; placeholder?: string;
+}) {
+  const [text, setText] = useState(value);
+  const editing = useRef(false);
+  useEffect(() => { if (!editing.current) setText(value); }, [value]);
+  return (
+    <input
+      value={text}
+      placeholder={placeholder}
+      className={className}
+      autoFocus={autoFocus}
+      onFocus={() => { editing.current = true; }}
+      onBlur={() => { editing.current = false; setText(value); }}
+      onChange={e => { setText(e.target.value); onChange(e.target.value); }}
+      onKeyDown={e => { if (e.key === 'Enter' && text.trim()) { e.preventDefault(); onEnter?.(); } }}
+    />
+  );
+}
+
 const normalizeNotes = (notes: ENTChecklist['notes'] | string | undefined): { text: string; completed: boolean }[] => {
-  if (Array.isArray(notes)) return notes;
+  // 舊資料的 notes 可能是字串，或字串陣列
+  if (Array.isArray(notes)) return notes.map(n => (typeof n === 'string' ? { text: n, completed: false } : n));
   if (typeof notes === 'string') return [{ text: notes, completed: false }];
   return [];
 };
 
-export default function PatientDetails({ patient, onUpdate, onDelete, editHeader, jsonOpen, onCloseJson }: PatientDetailsProps) {
-  const [showChecklistForm, setShowChecklistForm] = useState(false);
+export default function PatientDetails({ patient, onUpdate, onStatusChange, onDelete, editHeader, jsonOpen, onCloseJson }: PatientDetailsProps) {
   const [activeTab, setActiveTab] = useState('rounds');
   // 查房卡片內部：待辦／評估項目
-  const [roundTab, setRoundTab] = useState<'todo' | 'assess'>('todo');
   // 各分頁預設唯讀，按下鉛筆才露出編輯/刪除
   const [editData, setEditData] = useState(false);
   // 分頁共用的「哪一天」；檢驗/檢查是累積資料，不受它影響
@@ -219,24 +227,38 @@ export default function PatientDetails({ patient, onUpdate, onDelete, editHeader
 
   useEffect(() => { setEditData(false); setShowWeek(false); }, [activeTab, patient.id]);
 
-  // 日期一律取「日曆日」比對，避免 dailyChecks.date 帶時間造成差一天
-  const dayOf = (iso: string) => {
-    const d = new Date(iso);
-    return isNaN(d.getTime()) ? '' : format(d, 'yyyy-MM-dd');
-  };
   const selectedCheck = patient.dailyChecks.find(c => dayOf(c.date) === selectedDay);
 
-  const pickDay = (day: string) => {
+  const goDay = (day: string) => {
     setSelectedDay(day);
-    setWeekStart(startOfWeek(new Date(day), { weekStartsOn: 1 }));
+    setWeekStart(startOfWeek(new Date(day + 'T00:00'), { weekStartsOn: 1 }));
+  };
+  const pickDay = (day: string) => {
+    goDay(day);
     setShowWeek(false);
   };
+  const shiftDay = (n: number) => goDay(format(addDays(new Date(selectedDay + 'T00:00'), n), 'yyyy-MM-dd'));
+
+  // 選到的那天還沒有紀錄時，畫面上先給一張草稿卡：不寫進 dailyChecks，被改到才落地（見 updateCheck）
+  const draftCheck: ENTChecklist = {
+    id: `draft-${selectedDay}`,
+    date: new Date(`${selectedDay}T${format(new Date(), 'HH:mm')}`).toISOString(),
+    notes: [],
+  };
+  const shownCheck = selectedCheck ?? draftCheck;
+
+  const todoItems = dayTodos(patient.dailyChecks, selectedDay);
 
 
   // 手術當天 = POD 0；明天要開 = -1。用 T00:00 解析成當地午夜，跨時區不會差一天
-  const pod = patient.opDate
-    ? differenceInCalendarDays(new Date(), new Date(patient.opDate + 'T00:00'))
+  const opDay = patient.opDate ? new Date(patient.opDate + 'T00:00') : null;
+  const pod = opDay && !isNaN(opDay.getTime())
+    ? differenceInCalendarDays(new Date(), opDay)
     : null;
+  // 還沒開的刀講 POD -3 很怪，改寫日期（今／明／後）＋剪刀，與主頁清單同一套
+  const opLabel = pod === null ? null
+    : pod <= 0 ? relDay(patient.opDate!)
+    : `POD ${pod}`;
 
   const [localFields, setLocalFields] = useState({
     name: patient.name,
@@ -273,73 +295,47 @@ export default function PatientDetails({ patient, onUpdate, onDelete, editHeader
     onUpdate({ ...patient, [field]: value });
   };
 
-  // 一天一筆，已有就不新增（避免覆蓋當天既有紀錄）
-  const handleAddCheck = (newCheck: ENTChecklist) => {
-    const day = dayOf(newCheck.date);
-    if (patient.dailyChecks.some(c => dayOf(c.date) === day)) {
-      window.alert('這天已有查房紀錄，請直接編輯');
-      return;
-    }
-    onUpdate({ ...patient, dailyChecks: [...patient.dailyChecks, newCheck] });
-    setShowChecklistForm(false);
-    setSelectedDay(day);
-  };
-
-  const handleToggleNoteCompletion = (checkId: string, noteIndex: number) => {
+  // 查房紀錄的唯一寫入點。改到草稿卡就順勢把它建成當天的紀錄。
+  const updateCheck = (checkId: string, fn: (c: ENTChecklist) => ENTChecklist) => {
+    const base = patient.dailyChecks.some(c => c.id === checkId)
+      ? patient.dailyChecks
+      : [...patient.dailyChecks, draftCheck];
     onUpdate({
       ...patient,
-      dailyChecks: patient.dailyChecks.map(c => {
-        if (c.id !== checkId) return c;
-        const notesArray = normalizeNotes(c.notes);
-        const newNotes = [...notesArray];
-        const currentNote = typeof newNotes[noteIndex] === 'string' 
-          ? { text: newNotes[noteIndex] as unknown as string, completed: false }
-          : newNotes[noteIndex];
-        if (!currentNote) return c;
-        newNotes[noteIndex] = { ...currentNote, completed: !currentNote.completed };
-        return { ...c, notes: newNotes };
-      })
+      // 正在編輯的那筆留著（剛按＋的待辦還沒打字），其餘空白紀錄順手清掉
+      dailyChecks: base.map(c => (c.id === checkId ? fn(c) : c)).filter(c => c.id === checkId || !isBlankCheck(c)),
     });
   };
 
-  const handleMoveNote = (checkId: string, index: number, direction: 'up' | 'down') => {
-    onUpdate({
-      ...patient,
-      dailyChecks: patient.dailyChecks.map(c => {
-        if (c.id !== checkId) return c;
-        // Normalize all notes first to ensure consistent objects
-        const notesArray = normalizeNotes(c.notes);
-        const newNotes = notesArray.map(n => typeof n === 'string' ? { text: n, completed: false } : n);
-        const newIndex = direction === 'up' ? index - 1 : index + 1;
-        if (newIndex < 0 || newIndex >= newNotes.length) return { ...c, notes: newNotes };
-        [newNotes[index], newNotes[newIndex]] = [newNotes[newIndex], newNotes[index]];
-        return { ...c, notes: newNotes };
-      })
+  const updateNotes = (checkId: string, fn: (notes: ENTChecklist['notes']) => ENTChecklist['notes']) =>
+    updateCheck(checkId, c => ({ ...c, notes: fn(normalizeNotes(c.notes)) }));
+
+  const handleToggleNoteCompletion = (checkId: string, index: number) =>
+    updateNotes(checkId, notes => notes.map((n, i) => (i === index ? { ...n, completed: !n.completed } : n)));
+
+  const handleMoveNote = (checkId: string, index: number, direction: 'up' | 'down') =>
+    updateNotes(checkId, notes => {
+      const to = direction === 'up' ? index - 1 : index + 1;
+      if (to < 0 || to >= notes.length) return notes;
+      const out = [...notes];
+      [out[index], out[to]] = [out[to], out[index]];
+      return out;
     });
+
+  const handleUpdateNoteText = (checkId: string, index: number, text: string) =>
+    updateNotes(checkId, notes => notes.map((n, i) => (i === index ? { ...n, text } : n)));
+
+  const handleDeleteNote = (checkId: string, index: number) =>
+    updateNotes(checkId, notes => notes.filter((_, i) => i !== index));
+
+  // 新增一則空待辦並把游標移過去（打完字按 Enter 就是連續輸入下一則）
+  const [focusNote, setFocusNote] = useState('');
+  const addNote = (checkId: string) => {
+    const at = normalizeNotes(patient.dailyChecks.find(c => c.id === checkId)?.notes).length;
+    setFocusNote(`${checkId}-${at}`);
+    updateNotes(checkId, notes => [...notes, { text: '', completed: false }]);
   };
 
-  const handleCheckFieldUpdate = (checkId: string, field: keyof ENTChecklist, value: any) => {
-    onUpdate({
-      ...patient,
-      dailyChecks: patient.dailyChecks.map(c => 
-        c.id === checkId ? { ...c, [field]: value } : c
-      )
-    });
-  };
-
-  const handleUpdateNoteText = (checkId: string, index: number, text: string) => {
-    onUpdate({
-      ...patient,
-      dailyChecks: patient.dailyChecks.map(c => {
-        if (c.id !== checkId) return c;
-        const notesArray = normalizeNotes(c.notes);
-        const newNotes = notesArray.map((n, i) => 
-          i === index ? (typeof n === 'string' ? { text, completed: false } : { ...n, text }) : n
-        );
-        return { ...c, notes: newNotes };
-      })
-    });
-  };
 
   const closeJsonModal = () => {
     onCloseJson();
@@ -375,6 +371,9 @@ export default function PatientDetails({ patient, onUpdate, onDelete, editHeader
       }
       return;
     }
+
+    // diagnosis 可能被 AI 輸出成 problem list 陣列 → 先壓平，後面 merge 與衝突比對才拿得到字串
+    if (parsed && typeof parsed === 'object' && 'diagnosis' in parsed) parsed.diagnosis = asText(parsed.diagnosis);
 
     const allowed = [
       'name', 'bedNumber', 'chartNumber', 'age', 'gender', 'admissionDate',
@@ -594,33 +593,49 @@ export default function PatientDetails({ patient, onUpdate, onDelete, editHeader
   };
   // ───────────────────────────────────────────────────────────────
 
-  // 各分頁第一列：新增（圖示）· 日期 · 編輯開關。dayCount 為週曆上每一天的筆數，不給就不顯示數字。
-  // onAdd 給 null 代表該分頁沒有「新增」，用 leftSlot 放別的按鈕（交班分頁放複製）
-  const tabBar = (onAdd: (() => void) | null, dayCount?: (day: string) => number, leftSlot?: React.ReactNode) => {
+  // 各分頁第一列：編輯開關 · 日期 · 新增（圖示）。dayCount 為週曆上每一天的筆數，不給就不顯示數字。
+  // onAdd 給 null 代表該分頁沒有「新增」，用 rightSlot 放別的按鈕（交班分頁放複製）
+  const tabBar = (onAdd: (() => void) | null, dayCount?: (day: string) => number, rightSlot?: React.ReactNode) => {
     const week = Array.from({ length: 7 }, (_, i) => format(addDays(weekStart, i), 'yyyy-MM-dd'));
     return (
       <>
+        {/* 左右兩側等寬，日期才會落在正中央；箭頭緊貼日期 */}
         <div className="flex items-center px-2 py-2">
-          {onAdd ? (
-            <button onClick={onAdd} title="新增" className="p-2 rounded-lg text-sage-600 hover:bg-sage-50 transition-colors">
-              <Plus className="w-4 h-4" />
+          <div className="w-9 shrink-0">
+            <button
+              onClick={() => setEditData(v => !v)}
+              title={editData ? '完成編輯' : '編輯'}
+              className={`p-2 rounded-lg transition-colors ${editData ? 'bg-sage-500 text-white' : 'text-natural-300 hover:text-sage-600 hover:bg-sage-50'}`}
+            >
+              {editData ? <CheckIcon className="w-4 h-4" /> : <Edit3 className="w-4 h-4" />}
             </button>
-          ) : leftSlot}
-          <button
-            onClick={() => setShowWeek(v => !v)}
-            className={`flex-1 mx-1 py-1.5 rounded-lg text-xs font-bold uppercase tracking-widest transition-colors ${
-              showWeek ? 'bg-natural-100 text-natural-700' : 'text-natural-500 hover:bg-natural-50'
-            }`}
-          >
-            {selectedDay === todayStr ? 'Today' : format(new Date(selectedDay), 'MM/dd (EEE)')}
-          </button>
-          <button
-            onClick={() => setEditData(v => !v)}
-            title={editData ? '完成編輯' : '編輯'}
-            className={`p-2 rounded-lg transition-colors ${editData ? 'bg-sage-500 text-white' : 'text-natural-300 hover:text-sage-600 hover:bg-sage-50'}`}
-          >
-            {editData ? <CheckIcon className="w-4 h-4" /> : <Edit3 className="w-4 h-4" />}
-          </button>
+          </div>
+          <div className="flex-1 flex items-center justify-center gap-0.5">
+            {/* 前後一天：最常用的動作，不必展開週曆 */}
+            <button onClick={() => shiftDay(-1)} title="前一天" className="shrink-0 p-1.5 rounded-lg text-natural-300 hover:text-sage-600 hover:bg-natural-50 transition-colors">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            {/* 固定寬度：Today 與 08/10 (MON) 長度不同，不鎖死箭頭會左右跳。7.5rem 放得下最長的那個 */}
+            <button
+              onClick={() => setShowWeek(v => !v)}
+              className={`w-30 shrink-0 py-1.5 rounded-lg text-xs font-bold uppercase tracking-widest transition-colors ${
+                showWeek ? 'bg-natural-100 text-natural-700' : 'text-natural-500 hover:bg-natural-50'
+              }`}
+            >
+              {selectedDay === todayStr ? 'Today' : format(new Date(selectedDay), 'MM/dd (EEE)')}
+            </button>
+            {/* 查房是記已經發生的事，未來的日期一律不給選 */}
+            <button onClick={() => shiftDay(1)} disabled={selectedDay >= todayStr} title="後一天" className="shrink-0 p-1.5 rounded-lg text-natural-300 hover:text-sage-600 hover:bg-natural-50 transition-colors disabled:opacity-30 disabled:hover:text-natural-300 disabled:hover:bg-transparent">
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+          <div className="w-9 shrink-0 flex justify-end">
+            {onAdd ? (
+              <button onClick={onAdd} title="新增" className="p-2 rounded-lg text-sage-600 hover:bg-sage-50 transition-colors">
+                <Plus className="w-4 h-4" />
+              </button>
+            ) : rightSlot}
+          </div>
         </div>
 
         {showWeek && (
@@ -635,16 +650,21 @@ export default function PatientDetails({ patient, onUpdate, onDelete, editHeader
               >
                 {format(weekStart, 'MM/dd')} – {format(addDays(weekStart, 6), 'MM/dd')} · 今天
               </button>
-              <button onClick={() => setWeekStart(addDays(weekStart, 7))} className="p-1.5 rounded-lg text-natural-300 hover:text-sage-600 hover:bg-white transition-colors">
+              <button
+                onClick={() => setWeekStart(addDays(weekStart, 7))}
+                disabled={format(addDays(weekStart, 6), 'yyyy-MM-dd') >= todayStr}
+                className="p-1.5 rounded-lg text-natural-300 hover:text-sage-600 hover:bg-white transition-colors disabled:opacity-30 disabled:hover:text-natural-300 disabled:hover:bg-transparent"
+              >
                 <ChevronRight className="w-4 h-4" />
               </button>
             </div>
             <div className="flex justify-between gap-0.5 sm:gap-1 px-2 sm:px-4 pt-2 pb-4">
               {week.map(day => {
                 const isPicked = day === selectedDay;
+                const future = day > todayStr;
                 const n = dayCount?.(day);
                 return (
-                  <button key={day} onClick={() => pickDay(day)} className="flex flex-col items-center gap-1.5 flex-1 min-w-0 group">
+                  <button key={day} onClick={() => pickDay(day)} disabled={future} className="flex flex-col items-center gap-1.5 flex-1 min-w-0 group disabled:opacity-30 disabled:cursor-default">
                     <span className={`text-[10px] font-bold uppercase tracking-widest ${isPicked ? 'text-sage-600' : 'text-natural-300'}`}>
                       {format(new Date(day), 'EEE')}
                     </span>
@@ -652,7 +672,7 @@ export default function PatientDetails({ patient, onUpdate, onDelete, editHeader
                       className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-all ${
                         isPicked
                           ? 'bg-sage-500 border-sage-500 text-white shadow-sm'
-                          : `bg-white text-natural-500 group-hover:border-sage-300 ${day === todayStr ? 'border-sage-300' : 'border-natural-200'}`
+                          : `bg-white text-natural-500 ${future ? '' : 'group-hover:border-sage-300'} ${day === todayStr ? 'border-sage-300' : 'border-natural-200'}`
                       }`}
                     >
                       {format(new Date(day), 'd')}
@@ -680,14 +700,24 @@ export default function PatientDetails({ patient, onUpdate, onDelete, editHeader
         <div className="flex items-start gap-1">
           {/* 欄位自己換行，右側動作永遠留在第一行 */}
           <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap flex-1 min-w-0">
-          <input
-            value={localFields.bedNumber}
-            disabled={!editHeader}
-            onChange={(e) => handleLocalChange('bedNumber', e.target.value)}
-            onBlur={() => syncField('bedNumber', localFields.bedNumber)}
-            title={(STATUS_TONE[patient.status] ?? STATUS_TONE.Discharged).label}
-            className={`px-2 py-0.5 rounded border-2 text-xs font-bold uppercase tracking-wider text-center whitespace-nowrap focus:ring-1 focus:ring-sage-500 focus:outline-hidden [field-sizing:content] min-w-16 ${(STATUS_TONE[patient.status] ?? STATUS_TONE.Discharged).chip}`}
-          />
+          {/* 床號底色＝狀態；沒在編輯基本資料時，點床號就能改狀態（與主頁一致） */}
+          {editHeader ? (
+            <input
+              value={localFields.bedNumber}
+              onChange={(e) => handleLocalChange('bedNumber', e.target.value)}
+              onBlur={() => syncField('bedNumber', localFields.bedNumber)}
+              title={(STATUS_TONE[patient.status] ?? STATUS_TONE.Discharged).label}
+              className={`px-2 py-0.5 rounded border-2 text-xs font-bold uppercase tracking-wider text-center whitespace-nowrap focus:ring-1 focus:ring-sage-500 focus:outline-hidden [field-sizing:content] min-w-16 ${(STATUS_TONE[patient.status] ?? STATUS_TONE.Discharged).chip}`}
+            />
+          ) : (
+            <DropdownSelect
+              value={patient.status}
+              onChange={(v) => onStatusChange(patient, v as Patient['status'])}
+              options={STATUS_OPTIONS as unknown as { value: string; label: string; triggerClass: string; dotColor: string }[]}
+              triggerContent={patient.bedNumber}
+              triggerClassName={`px-2 py-0.5 rounded border-2 text-xs font-bold uppercase tracking-wider text-center whitespace-nowrap min-w-16 transition-colors ${(STATUS_TONE[patient.status] ?? STATUS_TONE.Discharged).chip}`}
+            />
+          )}
           <input
             value={localFields.name}
             disabled={!editHeader}
@@ -715,32 +745,23 @@ export default function PatientDetails({ patient, onUpdate, onDelete, editHeader
               />
             )}
           </span>
-          {/* 狀態平常由床號底色表達（同主頁），只有編輯時才露出選單 */}
-          {editHeader && (
-            <>
-              <span className="w-1.5" />
-              <DropdownSelect
-                value={patient.status}
-                onChange={(v) => syncField('status', v)}
-                options={STATUS_OPTIONS as unknown as { value: string; label: string; triggerClass: string; dotColor: string }[]}
-                compact
-              />
-            </>
-          )}
+          {/* 狀態一律由床號底色表達（同主頁），點床號改，不另外放選單 */}
           </div>
           <div className="flex items-center gap-1.5 shrink-0 self-start">
             {/* ponytail: 出院日 badge 上面疊一層透明的 date input —— 點哪裡都直接開原生日期選單，
                 不用自己寫彈窗。要清空就用選單自帶的清除鈕。 */}
             {(patient.dischargeDate || editHeader) && (
               <span
-                className={`relative px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wider whitespace-nowrap ${
+                className={`relative inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wider whitespace-nowrap ${
                   patient.dischargeDate
                     ? 'border-clinical-100 bg-clinical-50 text-clinical-700'
                     : 'border-dashed border-natural-200 text-natural-300'
                 }`}
-                title="預計出院日（點擊修改）"
+                title={patient.dischargeDate ? `預計出院日 ${patient.dischargeDate}（點擊修改）` : '預計出院日（點擊設定）'}
               >
-                {patient.dischargeDate ? `出院 ${patient.dischargeDate.slice(5).replace('-', '/')}` : '＋ 出院日'}
+                {patient.dischargeDate
+                  ? <>{relDay(patient.dischargeDate)}<DoorOpen className="w-2.5 h-2.5" /></>
+                  : <>＋<DoorOpen className="w-2.5 h-2.5" /></>}
                 <input
                   type="date"
                   value={localFields.dischargeDate}
@@ -750,12 +771,15 @@ export default function PatientDetails({ patient, onUpdate, onDelete, editHeader
                 />
               </span>
             )}
-            {pod !== null && (
+            {opLabel && (
               <span
-                className="px-2 py-0.5 rounded-full border border-clay-400 text-clay-600 text-[10px] font-bold uppercase tracking-wider"
+                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full border text-[10px] font-bold uppercase tracking-wider ${
+                  pod! <= 0 ? 'bg-clay-100 border-clay-300 text-clay-700' : 'border-clay-400 text-clay-600'
+                }`}
                 title={`手術日 ${patient.opDate}${patient.opProcedure ? `：${patient.opProcedure}` : ''}`}
               >
-                POD {pod}
+                {opLabel}
+                {pod! <= 0 && <Scissors className="w-2.5 h-2.5" />}
               </span>
             )}
           </div>
@@ -817,8 +841,8 @@ export default function PatientDetails({ patient, onUpdate, onDelete, editHeader
       <div className="space-y-3">
 
         <div className="flex border-b border-natural-200">
-          {TABS.filter(t => t.key !== 'briefing' || patient.briefing).map(t => {
-            const n = t.count?.(patient) ?? 0;
+          {TABS.map(t => {
+            const badge = t.badge?.(patient) || '';
             return (
               <button
                 key={t.key}
@@ -832,9 +856,9 @@ export default function PatientDetails({ patient, onUpdate, onDelete, editHeader
                 }`}
               >
                 {t.icon}
-                {n > 0 && (
+                {badge !== '' && (
                   <span className={`absolute top-1.5 right-1/2 -mr-4 min-w-[16px] h-4 px-1 rounded-full text-[9px] font-bold flex items-center justify-center ${t.tone}`}>
-                    {n}
+                    {badge}
                   </span>
                 )}
               </button>
@@ -843,7 +867,7 @@ export default function PatientDetails({ patient, onUpdate, onDelete, editHeader
         </div>
 
         {/* ── 交班報告 ── */}
-        {activeTab === 'briefing' && (patient.briefing || editData) && (
+        {activeTab === 'briefing' && (
           <div className="bg-white rounded-2xl border border-natural-200 shadow-sm overflow-hidden">
             {/* ponytail: briefing 是整份病患一份，不分天 —— 日期列在這裡只是切換各分頁共用的 selectedDay。
                 之後真的要一天一份交班，改成 briefings[] by date 再讓這條日期列有作用 */}
@@ -867,8 +891,12 @@ export default function PatientDetails({ patient, onUpdate, onDelete, editHeader
                   placeholder="交班報告（markdown：# 標題、**粗體**、- 清單、| 表格 |）"
                   className="w-full min-h-[60vh] p-3 bg-natural-50 border border-natural-200 rounded-xl font-mono text-xs leading-relaxed text-natural-800 placeholder-natural-300 resize-y focus:outline-hidden focus:border-sage-500 focus:ring-1 focus:ring-sage-500"
                 />
+              ) : patient.briefing ? (
+                <Markdown text={patient.briefing} />
               ) : (
-                <Markdown text={patient.briefing!} />
+                <p className="py-8 text-center text-xs font-bold uppercase tracking-widest text-natural-300">
+                  尚未貼上交班報告
+                </p>
               )}
             </div>
           </div>
@@ -1096,163 +1124,68 @@ export default function PatientDetails({ patient, onUpdate, onDelete, editHeader
         {/* ── Daily Rounds ── */}
         {activeTab === 'rounds' && (
           <div className="bg-white rounded-2xl border border-natural-200 shadow-sm overflow-hidden">
-            {tabBar(() => setShowChecklistForm(true), day => patient.dailyChecks.some(c => dayOf(c.date) === day) ? 1 : 0)}
+            {tabBar(
+              () => addNote(shownCheck.id),
+              day => patient.dailyChecks.some(c => dayOf(c.date) === day) ? 1 : 0,
+            )}
             <div className="px-3 sm:px-5 pb-5 pt-3 border-t border-natural-50 space-y-4">
-                  {showChecklistForm && (
-                    <DailyChecklistForm day={selectedDay} onCancel={() => setShowChecklistForm(false)} onSubmit={handleAddCheck} />
-                  )}
                       <div className="relative group/carousel">
                         <AnimatePresence mode="wait">
-                          {selectedCheck ? (
                             <motion.div
-                              key={selectedCheck.id}
+                              key={shownCheck.id}
                               initial={{ opacity: 0 }}
                               animate={{ opacity: 1 }}
                               exit={{ opacity: 0 }}
                               transition={{ duration: 0 }}
-                              className="bg-white rounded-3xl border border-natural-200 shadow-xl flex flex-col"
+                              className="flex flex-col"
                             >
                               {(() => {
-                                const check = selectedCheck;
-                                if (!check) return null;
+                                // 這天沒紀錄就是草稿卡；填了東西才會變成真的紀錄
+                                const check = shownCheck;
                                 return (
                                   <>
-                                    <div className="p-3 sm:p-6 md:p-8 flex flex-col gap-4 sm:gap-6 relative group/content">
-                                    {editData && (
-                                    <button
-                                      onClick={() => {
-                                        if (window.confirm('刪除這筆查房紀錄？')) {
-                                          onUpdate({ ...patient, dailyChecks: patient.dailyChecks.filter(c => c.id !== check.id) });
-                                        }
-                                      }}
-                                      className="absolute top-4 right-4 p-2 text-natural-300 hover:text-terracotta-500 transition-colors opacity-100 sm:opacity-0 sm:group-hover/content:opacity-100 bg-white border border-natural-100 rounded-full shadow-sm hover:shadow-md z-10"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" />
-                                    </button>
-                                    )}
-
-                                    {/* 卡片內的小分頁：待辦／評估項目 */}
-                                    <div className="flex gap-1 border-b border-natural-100 -mt-1">
-                                      {([['todo', '待辦'], ['assess', '評估項目']] as const).map(([key, label]) => (
-                                        <button
-                                          key={key}
-                                          onClick={() => setRoundTab(key)}
-                                          className={`px-3 py-2 text-xs font-bold uppercase tracking-widest border-b-2 -mb-px transition-colors ${
-                                            roundTab === key ? 'border-sage-500 text-natural-800' : 'border-transparent text-natural-400 hover:text-natural-600'
-                                          }`}
-                                        >
-                                          {label}
-                                          <span className="ml-2 text-[10px] text-natural-300">
-                                            {key === 'todo'
-                                              ? normalizeNotes(check.notes).filter(n => !n.completed).length
-                                              : CHECK_FIELDS.filter(f => check[f.key] !== undefined).length}
-                                          </span>
-                                        </button>
-                                      ))}
-
-                                      {/* 新增按鈕貼在分頁列右側，不另外佔一行 */}
-                                      {roundTab === 'todo' ? (
+                                    <div className="flex flex-col gap-3 relative group/content">
+                                    <div className="flex justify-end items-center gap-1 empty:hidden">
+                                      {editData && selectedCheck && (
                                         <button
                                           onClick={() => {
-                                            const notesArray = normalizeNotes(check.notes);
-                                            handleCheckFieldUpdate(check.id, 'notes', [...notesArray, { text: '', completed: false }]);
+                                            if (window.confirm('刪除這筆查房紀錄？')) {
+                                              onUpdate({ ...patient, dailyChecks: patient.dailyChecks.filter(c => c.id !== check.id) });
+                                            }
                                           }}
-                                          className="ml-auto self-center p-1.5 text-sage-500 hover:bg-sage-50 rounded transition-all"
-                                          title="新增待辦"
+                                          title="刪除這天的查房紀錄"
+                                          className="p-1.5 text-natural-300 hover:text-terracotta-500 rounded transition-colors"
                                         >
-                                          <Plus className="w-3.5 h-3.5" />
+                                          <Trash2 className="w-3.5 h-3.5" />
                                         </button>
-                                      ) : editData && CHECK_FIELDS.some(f => check[f.key] === undefined) && (
-                                        <select
-                                          value=""
-                                          onChange={e => { const f = CHECK_FIELDS.find(x => x.key === e.target.value); if (f) handleCheckFieldUpdate(check.id, f.key, f.add); }}
-                                          className="ml-auto self-center text-[10px] font-bold text-natural-400 bg-transparent cursor-pointer hover:text-sage-600 transition-colors focus:outline-hidden"
-                                        >
-                                          <option value="">＋ 評估項目</option>
-                                          {CHECK_FIELDS.filter(f => check[f.key] === undefined).map(f => (
-                                            <option key={f.key} value={f.key}>{f.label}</option>
-                                          ))}
-                                        </select>
                                       )}
                                     </div>
 
-                                    <div className={`grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2 ${roundTab === 'assess' ? '' : 'hidden'}`}>
-                                      {CHECK_FIELDS.filter(f => check[f.key] !== undefined).map(f => {
-                                        const raw = check[f.key] as string | number | boolean | undefined;
-                                        const isBool = typeof f.add === 'boolean';
-                                        const shown = isBool ? (raw ? 'Yes' : 'No') : raw;
-                                        const bad = f.options
-                                          ? (f.normal !== undefined && shown !== f.normal)
-                                          : (f.abnormal ? f.abnormal(raw as number) : false);
-                                        return (
-                                          <div key={f.key} className="flex items-center gap-2 p-2.5 rounded-xl bg-white border border-natural-100 shadow-xs group/tile">
-                                            <div className="w-7 h-7 rounded-lg bg-natural-50 flex items-center justify-center shrink-0">{f.icon}</div>
-                                            <div className="flex flex-col min-w-0 flex-1">
-                                              <span className="text-[9px] font-bold text-natural-400 uppercase tracking-wider leading-none mb-0.5">{f.label}</span>
-                                              {f.options ? (
-                                                <select
-                                                  value={shown as string}
-                                                  disabled={!editData}
-                                                  onChange={e => handleCheckFieldUpdate(check.id, f.key, isBool ? e.target.value === 'Yes' : e.target.value)}
-                                                  className={`bg-transparent text-xs font-bold focus:outline-hidden disabled:appearance-none disabled:cursor-default cursor-pointer ${bad ? 'text-terracotta-600' : 'text-natural-800'}`}
-                                                >
-                                                  {f.options.map(o => <option key={o}>{o}</option>)}
-                                                </select>
-                                              ) : (
-                                                <span className="flex items-baseline gap-0.5">
-                                                  <input
-                                                    type="number" step={f.step} value={raw as number}
-                                                    disabled={!editData}
-                                                    onChange={e => handleCheckFieldUpdate(check.id, f.key, e.target.value === '' ? undefined : parseFloat(e.target.value))}
-                                                    className={`w-12 bg-transparent text-xs font-bold focus:outline-hidden ${bad ? 'text-terracotta-600' : 'text-natural-800'}`}
-                                                  />
-                                                  <span className="text-[9px] text-natural-400">{f.unit}</span>
-                                                </span>
-                                              )}
-                                            </div>
-                                            {editData && (
-                                              <button
-                                                onClick={() => handleCheckFieldUpdate(check.id, f.key, undefined)}
-                                                title="標為未評估"
-                                                className="p-1 text-natural-200 hover:text-terracotta-500 opacity-100 sm:opacity-0 sm:group-hover/tile:opacity-100 transition-all shrink-0"
-                                              >
-                                                <X className="w-3 h-3" />
-                                              </button>
-                                            )}
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-
-                                    <div className={`flex-1 shrink-0 max-w-md ${roundTab === 'todo' ? '' : 'hidden'}`}>
+                                    <div className="flex-1 shrink-0 max-w-md">
                                       <ul className="space-y-2">
-                                        {/* 完成的沉到最下面；idx 保持原陣列位置，改動才寫得回去 */}
-                                        {(() => {
-                                          const notes = normalizeNotes(check.notes);
-                                          return notes
-                                            .map((raw, idx) => ({ idx, note: typeof raw === 'string' ? { text: raw, completed: false } : raw }))
-                                            .sort((a, b) => Number(a.note.completed) - Number(b.note.completed));
-                                        })().map(({ note, idx }) => {
-                                          const notes = normalizeNotes(check.notes);
+                                        {/* 完成的沉到最下面。carried = 之前哪天留下來還沒勾的，改動寫回原本那筆 */}
+                                        {todoItems.map(({ checkId, day, idx, note }) => {
+                                          const carried = day !== selectedDay;
+                                          const ownCount = normalizeNotes(check.notes).length;
                                           return (
                                             <li
-                                              key={idx}
+                                              key={`${checkId}-${idx}`}
                                               className={`flex gap-2 items-start group/item transition-all ${
                                                 note.completed ? 'opacity-40' : 'opacity-100'
                                               }`}
                                             >
-                                              {editData && (
+                                              {editData && !carried && (
                                               <div className="flex flex-col gap-0 opacity-100 sm:opacity-0 sm:group-hover/item:opacity-100 transition-opacity shrink-0">
                                                 <button
-                                                  onClick={(e) => { e.stopPropagation(); handleMoveNote(check.id, idx, 'up'); }}
+                                                  onClick={(e) => { e.stopPropagation(); handleMoveNote(checkId, idx, 'up'); }}
                                                   disabled={idx === 0}
                                                   className="p-0.5 hover:bg-natural-100 rounded disabled:opacity-10 text-natural-400 hover:text-sage-600"
                                                 >
                                                   <ChevronUp className="w-3 h-3" />
                                                 </button>
                                                 <button
-                                                  onClick={(e) => { e.stopPropagation(); handleMoveNote(check.id, idx, 'down'); }}
-                                                  disabled={idx === notes.length - 1}
+                                                  onClick={(e) => { e.stopPropagation(); handleMoveNote(checkId, idx, 'down'); }}
+                                                  disabled={idx === ownCount - 1}
                                                   className="p-0.5 hover:bg-natural-100 rounded disabled:opacity-10 text-natural-400 hover:text-sage-600"
                                                 >
                                                   <ChevronDown className="w-3 h-3" />
@@ -1261,7 +1194,7 @@ export default function PatientDetails({ patient, onUpdate, onDelete, editHeader
                                               )}
 
                                               <div
-                                                onClick={() => handleToggleNoteCompletion(check.id, idx)}
+                                                onClick={() => handleToggleNoteCompletion(checkId, idx)}
                                                 className={`w-4 h-4 rounded border flex items-center justify-center transition-all mt-1 shrink-0 cursor-pointer ${
                                                   note.completed ? 'bg-sage-400 border-sage-500' : 'bg-white border-natural-200 group-hover/item:border-sage-400'
                                                 }`}
@@ -1269,22 +1202,26 @@ export default function PatientDetails({ patient, onUpdate, onDelete, editHeader
                                                 {note.completed && <X className="w-3 h-3 text-white" />}
                                               </div>
 
-                                              <div className="flex-1 min-w-0">
-                                                <input
+                                              <div className="flex-1 min-w-0 flex items-baseline gap-2">
+                                                <LiveInput
                                                   value={note.text}
                                                   placeholder="待辦…"
-                                                  onChange={(e) => handleUpdateNoteText(check.id, idx, e.target.value)}
-                                                  className={`w-full bg-transparent text-sm font-medium leading-tight focus:outline-hidden border-b border-transparent hover:border-natural-100 focus:border-sage-400 placeholder-natural-300 ${
+                                                  autoFocus={focusNote === `${checkId}-${idx}`}
+                                                  onChange={(v) => handleUpdateNoteText(checkId, idx, v)}
+                                                  onEnter={() => addNote(check.id)}
+                                                  className={`flex-1 min-w-0 bg-transparent text-sm font-medium leading-tight focus:outline-hidden border-b border-transparent hover:border-natural-100 focus:border-sage-400 placeholder-natural-300 ${
                                                     note.completed ? 'line-through text-natural-400' : 'text-natural-900'
                                                   }`}
                                                 />
+                                                {carried && (
+                                                  <span className="shrink-0 text-[9px] font-bold uppercase tracking-widest text-clay-500" title="從這天留下來的待辦">
+                                                    {format(new Date(day + 'T00:00'), 'MM/dd')}
+                                                  </span>
+                                                )}
                                               </div>
 
                                               <button
-                                                onClick={() => {
-                                                  const notesArray = normalizeNotes(check.notes);
-                                                  handleCheckFieldUpdate(check.id, 'notes', notesArray.filter((_, i) => i !== idx));
-                                                }}
+                                                onClick={() => handleDeleteNote(checkId, idx)}
                                                 className="opacity-100 sm:opacity-0 sm:group-hover/item:opacity-100 p-1 text-natural-300 hover:text-terracotta-500 transition-all shrink-0"
                                               >
                                                 <Trash2 className="w-3 h-3" />
@@ -1299,13 +1236,6 @@ export default function PatientDetails({ patient, onUpdate, onDelete, editHeader
                                 );
                               })()}
                             </motion.div>
-                          ) : (
-                            <div className="py-10 text-center border-2 border-dashed border-natural-200 rounded-2xl">
-                              <ClipboardList className="w-10 h-10 text-natural-200 mx-auto mb-3" />
-                              <p className="text-natural-400 font-bold uppercase tracking-widest text-xs">這天沒有查房紀錄</p>
-                              <button onClick={() => setShowChecklistForm(true)} className="mt-3 text-xs font-bold text-sage-600 hover:underline">新增這天的紀錄</button>
-                            </div>
-                          )}
                         </AnimatePresence>
                       </div>
             </div>
@@ -1626,15 +1556,18 @@ function DropdownSelect({
   value,
   onChange,
   options,
-  compact = false,
   bare = false,
+  triggerContent,
+  triggerClassName,
 }: {
   value: string;
   onChange: (v: string) => void;
   options: { value: string; label: string; triggerClass: string; dotColor: string }[];
-  compact?: boolean;
   /** 只顯示文字（無點、無邊框），給性別這種已經用顏色表示的欄位 */
   bare?: boolean;
+  /** 自訂觸發鈕的內容與樣式（例：拿床號 chip 當狀態選單的入口） */
+  triggerContent?: React.ReactNode;
+  triggerClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -1655,16 +1588,17 @@ function DropdownSelect({
       <button
         type="button"
         onClick={() => setOpen(p => !p)}
-        title={current.label}
-        className={compact
-          ? `w-2.5 h-2.5 rounded-full ${current.dotColor} ring-2 ring-offset-1 ring-transparent hover:ring-current transition-all`
+        title={triggerContent ? `${current.label}（點擊變更）` : current.label}
+        className={triggerContent
+          ? triggerClassName
           : bare
             ? 'text-sm font-bold text-natural-500 hover:text-natural-800 transition-colors'
             : `flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-bold tracking-wide transition-all ${current.triggerClass}`}
       >
-        {!compact && !bare && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${current.dotColor}`} />}
-        {!compact && current.label}
-        {!compact && !bare && <ChevronDown className={`w-3 h-3 transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />}
+        {triggerContent}
+        {!triggerContent && !bare && <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${current.dotColor}`} />}
+        {!triggerContent && current.label}
+        {!triggerContent && !bare && <ChevronDown className={`w-3 h-3 transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />}
       </button>
       <AnimatePresence>
         {open && (

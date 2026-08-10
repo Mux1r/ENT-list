@@ -1,4 +1,14 @@
+import { differenceInCalendarDays } from 'date-fns';
+
 export type Gender = 'Male' | 'Female' | 'Other';
+
+// AI 匯入的 diagnosis 常是 problem list 陣列（甚至 [{problem: '...'}]），
+// 直接放進 string 欄位畫面上就變 [object Object]。匯入／讀取邊界一律過這裡。
+export const asText = (v: unknown): string =>
+  v == null ? ''
+    : Array.isArray(v) ? v.map(asText).filter(Boolean).join('；')
+    : typeof v === 'object' ? Object.values(v as object).map(asText).filter(Boolean).join(' ')
+    : String(v);
 
 // 病患列表與病患詳情共用的色票：床號底色＝狀態，姓名文字色＝性別
 export const STATUS_TONE: Record<string, { label: string; dot: string; chip: string }> = {
@@ -7,6 +17,14 @@ export const STATUS_TONE: Record<string, { label: string; dot: string; chip: str
   Critical: { label: 'Critical', dot: 'bg-terracotta-500', chip: 'bg-terracotta-50 text-terracotta-700 border-terracotta-500/45' },
   'Discharge Pending': { label: 'Discharge Pending', dot: 'bg-clinical-500', chip: 'bg-clinical-50 text-clinical-700 border-clinical-500/45' },
   Discharged: { label: 'Discharged', dot: 'bg-natural-300', chip: 'bg-natural-100 text-natural-500 border-natural-400/40' },
+};
+
+// 近日期講「今／明／後」，其餘寫 MM/DD。出院日與手術日的 badge 共用。
+export const relDay = (isoDate: string) => {
+  const d = new Date(isoDate + 'T00:00');
+  if (isNaN(d.getTime())) return isoDate;
+  const n = differenceInCalendarDays(d, new Date());
+  return n === 0 ? '今' : n === 1 ? '明' : n === 2 ? '後' : isoDate.slice(5).replace('-', '/');
 };
 
 export const GENDER_TEXT: Record<string, string> = {

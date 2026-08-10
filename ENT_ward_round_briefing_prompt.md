@@ -301,16 +301,13 @@ examinations[] 每筆＝一項影像/檢查(如 CXR、CT Neck):
 - name、orderedDate、status;選填 finding 報告內容
 - 病理送檢未回報者亦列一筆,status 填 "pending"
 
-dailyChecks[] 每筆＝某一天的查房評估(一天一筆,date 用該次查房日期;系統以日曆日比對,
+dailyChecks[] 每筆＝某一天的查房待辦(一天一筆,date 用該次查房日期;系統以日曆日比對,
 同一天重複匯入會覆寫而非新增):
 - date YYYY-MM-DDTHH:mm:ssZ(必填)
-- **其餘全部選填,且「病歷沒明確評估到的項目,直接不要輸出該鍵」**:
-  bleeding(None/Minor/Significant)、airway(Clear/Stridor/Obstructed)、
-  swallowing(Normal/Dysphagia/NPO)、facialNerve(Intact/Paresis/Paralysis)、
-  hoarseness(true/false)、drainAmount(數字cc)、woundStatus(Clean/Hyperemia/Discharge)、
-  painLevel(0-10)、fever(攝氏數字)、flap(Viable/Congested/Ischemic/Failed)、
-  tracheostomy(In situ/Capped/Decannulated)、calcium(數字 mg/dL)
-- 選填 notes: [{ "text": "備註", "completed": false }]
+- notes: [{ "text": "待辦", "completed": false }]
+  —— 這天該做／該追的事,一件一則,例:「追 CT 報告」「明天拔 drain」「換藥」。
+  已完成者 completed: true;沒事可列就給 []
+- **不要輸出其他欄位**:bleeding / airway / painLevel 等評估項目系統已不使用,一律不產生
 
 頂層另有:
 - diagnosis:**原文照抄 progress note 之 problem list**(見 S2),不自行改寫或重新組句。
@@ -327,13 +324,10 @@ dailyChecks[] 每筆＝某一天的查房評估(一天一筆,date 用該次查�
 - 不要輸出 id 欄位(系統會自動產生);沒有資料的選填欄位整個省略,沒有資料的陣列輸出 []。
 - **數值一律取自原始 lab data 欄位**(含完整時間戳與單位),不得從報告主體中已排版好的
   Markdown 表格回讀。表格是為人排版而壓縮過的,原始欄位才是真值來源。
-- **dailyChecks 的評估項目一律不得填補預設值。** 病歷未明確評估到的項目,直接不輸出該鍵;
-  「未評估」與「評估了,正常」在系統中是兩件不同的事,把沒看過的 facial nerve 記成 Intact
-  即屬杜撰,違反最高原則 1。
-  例:bilateral parotidectomy 病人若病歷只提到 wound 與 pain,dailyChecks 就只輸出
-  woundStatus 與 painLevel,不得附上 airway / swallowing / facialNerve。
-  值得提醒但未記載之事項寫入 notes[],例如
-  { "text": "drain output 未記載", "completed": false }。
+- **dailyChecks 只放待辦(notes[])**,不得輸出評估欄位。待辦須是「可執行的事」,
+  不是狀態描述:寫「追 CT 報告」「明天拔 drain」,不寫「wound clean」。
+  值得提醒但病歷未記載之事項也寫進 notes[],例如
+  { "text": "drain output 未記載,明日確認", "completed": false }。
 - 此段之內容須與報告主體一致,不得出現主體未載之數值、藥名或診斷。
 - **不得遺漏:報告主體 Lab 表格中出現的每一個檢驗項目,JSON labTests 都必須有對應的一筆,
   一項都不能少。** 輸出前逐欄清點一次(例:表格有 WBC/RBC/Hb/Ht/Plt/Seg 六項,JSON 就必須

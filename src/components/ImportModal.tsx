@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Patient, Gender } from '../types';
+import { Patient, Gender, asText } from '../types';
 import { X, Clipboard, Save, Info, FileJson, FileText, ImageIcon, Loader2, Check, Plus } from 'lucide-react';
 import { motion } from 'motion/react';
 import Papa from 'papaparse';
@@ -36,7 +36,7 @@ export default function ImportModal({ onImport, onCancel, onManualAdd }: ImportM
     gender: (row.gender === 'Female' || row['性別'] === '女' ? 'Female' : (row.gender === 'Other' || row['性別'] === '其他' ? 'Other' : 'Male')) as Gender,
     chartNumber: row.chartNumber || row['病歷號'] || '',
     admissionDate: row.admissionDate || row['入院日期'] || new Date().toISOString().split('T')[0],
-    diagnosis: row.diagnosis || row.admissionDiagnosis || row['診斷'] || row['入院診斷'] || '',
+    diagnosis: asText(row.diagnosis || row.admissionDiagnosis || row['診斷'] || row['入院診斷']),
     status: (['Stable', 'Critical', 'Discharge Pending'].includes(row.status) ? row.status : 'Stable') as Patient['status'],
     medications: Array.isArray(row.medications) ? row.medications.map((m: any) => ({ ...m, id: crypto.randomUUID() })) : [],
     labTests: Array.isArray(row.labTests) ? row.labTests.map((l: any) => ({ ...l, id: crypto.randomUUID() })) : [],
@@ -57,7 +57,7 @@ export default function ImportModal({ onImport, onCancel, onManualAdd }: ImportM
           gender: (row.gender === 'Female' || row['性別'] === '女' ? 'Female' : (row.gender === 'Other' || row['性別'] === '其他' ? 'Other' : 'Male')) as Gender,
           chartNumber: row.chartNumber || row['病歷號'] || '',
           admissionDate: row.admissionDate || row['入院日期'] || new Date().toISOString().split('T')[0],
-          diagnosis: row.diagnosis || row.admissionDiagnosis || row['診斷'] || row['入院診斷'] || '',
+          diagnosis: asText(row.diagnosis || row.admissionDiagnosis || row['診斷'] || row['入院診斷']),
           status: 'Stable' as Patient['status'],
           medications: [],
           labTests: [],

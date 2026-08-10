@@ -2,7 +2,7 @@
 import assert from 'node:assert';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { format, startOfWeek, addDays } from 'date-fns';
-import TodaySchedule, { weekOps, pendingTodos } from './TodaySchedule';
+import TodaySchedule, { weekOps, pendingTodos, setTodoDone } from './TodaySchedule';
 import { Patient } from '../types';
 
 const today = format(new Date(), 'yyyy-MM-dd');
@@ -50,11 +50,22 @@ assert.deepEqual(todo[0].undone.map(n => n.text), ['拔 drain']);   // 跨天同
 assert.deepEqual(todo[0].done.map(n => n.text), ['已做的', '換藥']);
 assert.deepEqual(todo[1].undone, []);
 
+// ── 勾掉待辦：所有記錄裡同一句話一起標完成，其他句子不動
+const before = p({ name: '甲', dailyChecks: [
+  { id: 'a1', date: yesterdayIso, notes: [{ text: '拔 drain', completed: false }, { text: '換藥', completed: false }] },
+  { id: 'a2', date: nowIso, notes: [{ text: '拔 drain', completed: false }] },
+] });
+const after = setTodoDone(before, '拔 drain', true);
+assert.deepEqual(after.dailyChecks.map(c => c.notes.map(n => n.completed)), [[true, false], [true]]);
+assert.deepEqual(setTodoDone(after, '拔 drain', false).dailyChecks[1].notes[0].completed, false);
+assert.deepEqual(before.dailyChecks[0].notes[0].completed, false);   // 原物件不被改到
+
 // ── 畫面：預設 手術 tab + 今日，七個日期點都在
 const html = renderToStaticMarkup(
   <TodaySchedule
     patients={[p({ name: '今天甲', opDate: today, opProcedure: 'Thyroidectomy' }), p({ name: '未完乙', dailyChecks: [] })]}
     onSelect={() => {}}
+    onUpdate={() => {}}
     tab="op"
     onTabChange={() => {}}
   />
@@ -62,22 +73,25 @@ const html = renderToStaticMarkup(
 assert.equal((html.match(/sm:w-10 sm:h-10 rounded-full/g) || []).length, 7);
 assert.match(html, /今天甲[\s\S]*Thyroidectomy/);
 assert.doesNotMatch(html, /未完乙/);              // 待辦在另一個 tab
-assert.match(renderToStaticMarkup(<TodaySchedule patients={[]} onSelect={() => {}} tab="op" onTabChange={() => {}} />), /這天沒有排刀/);
+assert.match(renderToStaticMarkup(<TodaySchedule patients={[]} onSelect={() => {}} onUpdate={() => {}} tab="op" onTabChange={() => {}} />), /這天沒有排刀/);
 
-// ── 待辦 tab：不分天、沒有日期列，完成的畫刪除線
+// ── 待辦 tab：不分天、沒有日期列，只列未完成
 const todoHtml = renderToStaticMarkup(
   <TodaySchedule
     patients={[
       p({ name: '未完甲', dailyChecks: [{ id: 'c', date: yesterdayIso, notes: [{ text: '拔 drain', completed: false }, { text: '已做的', completed: true }] }] }),
+      p({ name: '全完乙', dailyChecks: [{ id: 'e', date: nowIso, notes: [{ text: '做完了', completed: true }] }] }),
       p({ name: '沒紀錄丙', dailyChecks: [] }),
     ]}
     onSelect={() => {}}
+    onUpdate={() => {}}
     tab="todo"
     onTabChange={() => {}}
   />
 );
 assert.match(todoHtml, /未完甲[\s\S]*拔 drain/);      // 昨天的待辦今天還在
-assert.match(todoHtml, /line-through[\s\S]*已做的/);
+assert.doesNotMatch(todoHtml, /已做的/);              // 完成的不再列出
+assert.doesNotMatch(todoHtml, /全完乙/);              // 全部完成的病患整列不出現
 assert.doesNotMatch(todoHtml, /沒紀錄丙/);            // 沒記錄＝沒事要做
 assert.doesNotMatch(todoHtml, /sm:w-10 sm:h-10 rounded-full/);   // 待辦不分天，沒有日期列
 

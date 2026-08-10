@@ -49,17 +49,8 @@
     {
       "id": "",
       "date": "YYYY-MM-DDTHH:mm:ssZ",
-      "bleeding": "None 或 Minor 或 Significant",
-      "airway": "Clear 或 Stridor 或 Obstructed",
-      "swallowing": "Normal 或 Dysphagia 或 NPO",
-      "facialNerve": "Intact 或 Paresis 或 Paralysis",
-      "hoarseness": true 或 false,
-      "drainAmount": 引流量cc數字,
-      "woundStatus": "Clean 或 Hyperemia 或 Discharge",
-      "painLevel": 0到10的數字,
-      "fever": 體溫數字（攝氏）,
       "notes": [
-        { "text": "備註內容", "completed": false }
+        { "text": "這天該做／該追的事（如 追 CT 報告、明天拔 drain）", "completed": false }
       ]
     }
   ]
@@ -70,15 +61,10 @@
 - 所有 id 欄位留空字串 ""，系統自動產生
 - status 只能是 Stable / Critical / Discharge Pending / Discharged
 - medications、labTests、examinations 若無資料填 []
-- dailyChecks 若無資料填 []
+- dailyChecks 若無資料填 []；每筆只有 date 與 notes[]（待辦），不要輸出 bleeding、airway、painLevel 等評估欄位
 - 選填欄位（endDate、stopReason、resultDate、value、unit、referenceRange、finding）若無資料請直接省略該 key，不要填 null 或空字串
 - category 只能是 CBC/DC / 生化 / 凝血 / 電解質 / 尿液 / 培養 / 其他
 - abnormalDir 只在 isAbnormal 為 true 時填入，H=偏高（紅）、L=偏低（藍）
-- bleeding 只能是 None / Minor / Significant
-- airway 只能是 Clear / Stridor / Obstructed
-- swallowing 只能是 Normal / Dysphagia / NPO
-- facialNerve 只能是 Intact / Paresis / Paralysis
-- woundStatus 只能是 Clean / Hyperemia / Discharge
 - 只輸出純 JSON，不要包含 ```json 或任何 Markdown 標記，直接從 { 開始到 } 結束
 
 ### labTests 擷取規則（重要）
@@ -163,18 +149,9 @@
     {
       "id": "",
       "date": "2026-06-21T08:30:00Z",
-      "bleeding": "None",
-      "airway": "Clear",
-      "swallowing": "Normal",
-      "facialNerve": "Intact",
-      "hoarseness": true,
-      "drainAmount": 45,
-      "woundStatus": "Clean",
-      "painLevel": 3,
-      "fever": 37.1,
       "notes": [
-        { "text": "POD1. Right vocal cord paresis noted on laryngoscopy.", "completed": false },
-        { "text": "Calcium 8.2 (low), supplement started.", "completed": false }
+        { "text": "追 laryngoscopy 報告，right vocal cord paresis 需回診評估", "completed": false },
+        { "text": "Calcium 8.2 偏低，明日追 Ca 並確認補充劑量", "completed": false }
       ]
     }
   ]

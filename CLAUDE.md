@@ -37,14 +37,14 @@ npx tsx src/components/TodaySchedule.check.tsx
 
 改完 rules 要另外 `firebase deploy --only firestore:rules`（CI 不含這步）。
 
-### ENTChecklist 的「未評估」語意
+### ENTChecklist 的評估欄位已停用
 
-[types.ts](src/types.ts) 裡查房各項目全部選填，**key 不存在 = 今天沒評估**，與「評估了，結果正常」是兩回事。渲染時 `undefined` 要整格不顯示，不可 fallback 成正常值。舊資料的必填值可直接讀，不做 migration。
+[types.ts](src/types.ts) 的 `bleeding` / `airway` / `painLevel` 等評估欄位**畫面上已不再顯示**，查房頁只剩待辦（`notes[]`）。三份 prompt 也都改成只產 `date` + `notes`。舊資料仍留在 Firestore、匯入時也照收，`ASSESS_KEYS` 只用來判斷一筆紀錄是不是空的；不做 migration。要恢復評估 UI 就翻 git（`CHECK_FIELDS` 那張表）。
 
 ## 主要流程
 
 - [App.tsx](src/App.tsx) — 唯一的資料層。`onSnapshot` 訂閱 `patients` 即時同步，所有 Firestore 寫入都在這裡；子元件透過 callback 往上報。也負責病患列表、排序、批次選取、出院流程。
-- [PatientDetails.tsx](src/components/PatientDetails.tsx) — 分頁式病患詳情（交班 / 用藥 / 檢驗 / 檢查 / 查房）。查房欄位由 `CHECK_FIELDS` 表驅動，加項目改那個陣列即可。
+- [PatientDetails.tsx](src/components/PatientDetails.tsx) — 分頁式病患詳情（交班 / 用藥 / 檢驗 / 檢查 / 查房）。查房頁只有待辦清單（`dayTodos` 跨日累積未勾的），評估項目的 UI 已移除；`ENTChecklist` 的評估欄位仍會被匯入與保存，`ASSESS_KEYS` 只用來判斷一筆紀錄是不是空的。
 - [TodaySchedule.tsx](src/components/TodaySchedule.tsx) — 本週手術行事曆 + 跨日累積的未完成 checklist。`weekOps` / `pendingTodos` 是純函式並 export，給 check 檔用。
 - [wards.ts](src/wards.ts) — 床號 → 病房代碼。院內編碼規則（房號 ≥ 50 算 B 區、9 樓分區字母直接寫在床號裡、ICU 是 9I1/9I2）都在註解和 check 檔裡。
 
