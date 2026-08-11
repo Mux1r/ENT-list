@@ -65,12 +65,15 @@ const TABS: { key: string; label: string; icon: React.ReactNode; badge?: (p: Pat
   {
     key: 'exam', label: '檢查（待結果）', icon: <Scan className="w-4 h-4" />,
     badge: p => (p.examinations || []).filter(e => e.status === 'pending').length,
-    tone: 'bg-amber-500 text-white',
+    tone: 'bg-clay-600 text-white',
   },
   {
     key: 'rounds', label: 'Daily Round', icon: <ClipboardList className="w-4 h-4" />,
-    // 只提醒還沒勾掉的待辦，不是紀錄筆數
-    badge: p => (p.dailyChecks || []).flatMap(c => normalizeNotes(c.notes)).filter(n => !n.completed && n.text.trim()).length,
+    // 只提醒還沒勾掉的待辦，不是紀錄筆數。
+    // 數的範圍要和查房頁真的看得到的一致（dayTodos 只給「今天以前」），
+    // 否則匯入到未來日期的待辦會變成一個點進去看不到、也勾不掉的紅字。
+    badge: p => dayTodos(p.dailyChecks || [], format(new Date(), 'yyyy-MM-dd'))
+      .filter(t => !t.note.completed && t.note.text.trim()).length,
     tone: 'bg-terracotta-500 text-white',
   },
 ];
