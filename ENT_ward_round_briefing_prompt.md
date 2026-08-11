@@ -77,6 +77,9 @@
      用英文原文,不譯成中文(如 flap viable、afebrile、wide excision、tracheostomy、CRP)。
    · 縮寫:能縮寫就縮寫,善用臨床通用縮寫(POD、OP、s/p、Tmax、WBC、CRP、Hb、NPO、
      NG、JP、ABX、RND、ALT 等);沿用臨床慣例,勿自創;僅在可能歧義時才補全。
+   · 側別一律縮寫:right → Rt、left → Lt、bilateral → Bil,寫在部位之前
+     (如 Rt neck、Lt parotid、Bil tonsils)。診斷、術式、影像、傷口、引流位置一體適用,
+     不寫成 right / left / bilateral 全稱,也不譯成中文的「右側」。
    · 句式:片段式短句/詞組,省略主詞、冠詞、贅語;不寫完整長句、不加轉折修飾。
      一行一重點;同一重點內以「,」或「/」分隔並列項。
    · **不加任何修辭與美化**:不用粗體、不用斜體、不用 emoji、不加驚嘆語氣、不寫
@@ -292,7 +295,7 @@ dailyChecks[] 每筆＝某一天的查房待辦(一天一筆,date 用該次查�
 頂層另有:
 - diagnosis:**原文照抄 progress note 之 problem list**(見 S2),不自行改寫或重新組句。
   problem list 未帶入時,才依序取 operation note 術後診斷、present illness 入院診斷,
-  並採格式「{側別} {部位} {診斷} s/p {術式}」(有手術才加後半)。
+  並採格式「{側別} {部位} {診斷} s/p {術式}」(有手術才加後半);側別寫 Rt / Lt / Bil。
   病理回報後,以病理診斷取代臨床推測診斷(如 cystic mass → Warthin's tumor)。
   **同一病人每日之 diagnosis 必須維持一致用字**:除非診斷實質改變(良性→惡性、
   新增併發症、部位更正),否則不得換句話說、不得調整語序、不得增刪形容詞。

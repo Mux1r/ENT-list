@@ -110,6 +110,9 @@
       { "abbr": "ZMC", "en": "Zygomaticomaxillary Complex (fracture)", "zh": "顴骨上顎複合骨折" }
     ],
     "anatomy": [
+      { "abbr": "Rt", "en": "Right", "zh": "右側" },
+      { "abbr": "Lt", "en": "Left", "zh": "左側" },
+      { "abbr": "Bil", "en": "Bilateral", "zh": "雙側" },
       { "abbr": "TM", "en": "Tympanic Membrane", "zh": "鼓膜" },
       { "abbr": "EAC", "en": "External Auditory Canal", "zh": "外耳道" },
       { "abbr": "IAC", "en": "Internal Auditory Canal", "zh": "內耳道" },
