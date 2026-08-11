@@ -50,6 +50,12 @@ assert.deepEqual(todo[0].undone.map(n => n.text), ['拔 drain']);   // 跨天同
 assert.deepEqual(todo[0].done.map(n => n.text), ['已做的', '換藥']);
 assert.deepEqual(todo[1].undone, []);
 
+// 剛按＋還沒打字的空待辦不列入（否則排程會多一列空白）
+const blank = pendingTodos([
+  p({ name: '空白戊', dailyChecks: [{ id: 'e', date: nowIso, notes: [{ text: '  ', completed: false }] }] }),
+]);
+assert.deepEqual(blank, []);
+
 // ── 勾掉待辦：所有記錄裡同一句話一起標完成，其他句子不動
 const before = p({ name: '甲', dailyChecks: [
   { id: 'a1', date: yesterdayIso, notes: [{ text: '拔 drain', completed: false }, { text: '換藥', completed: false }] },

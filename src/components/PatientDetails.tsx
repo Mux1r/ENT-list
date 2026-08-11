@@ -940,7 +940,7 @@ export default function PatientDetails({ patient, onUpdate, onStatusChange, onDe
                           <div className="flex items-center gap-2">
                             <button
                               onClick={() => setShowPendingOnly(p => !p)}
-                              className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-all ${showPendingOnly ? 'bg-amber-500 text-white' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'}`}
+                              className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-all ${showPendingOnly ? 'bg-clay-600 text-white' : 'bg-clay-100 text-clay-700 hover:bg-clay-200'}`}
                             >
                               <Clock className="w-3 h-3" /> 待報告 {pending.length}
                             </button>
@@ -1062,7 +1062,7 @@ export default function PatientDetails({ patient, onUpdate, onStatusChange, onDe
                               <span className="text-[10px] text-natural-400 shrink-0 tabular-nums">{exam.orderedDate}</span>
                               <span className="text-sm font-bold text-natural-900 truncate">{exam.name}</span>
                               {exam.status === 'pending' && (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 shrink-0">待報告</span>
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-clay-100 text-clay-700 shrink-0">待報告</span>
                               )}
                               {editData && (
                                 <div className="flex gap-1 shrink-0 ml-auto">
@@ -1233,7 +1233,7 @@ export default function PatientDetails({ patient, onUpdate, onStatusChange, onDe
               {/* ── Conflict diff view ── */}
               {conflicts.length > 0 ? (
                 <>
-                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                  <p className="text-xs text-clay-700 bg-clay-50 border border-clay-200 rounded-xl px-4 py-3">
                     偵測到 <strong>{conflicts.length}</strong> 處資料衝突。預設使用新資料，可逐欄調整。
                   </p>
 

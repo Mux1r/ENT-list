@@ -40,6 +40,7 @@ export const pendingTodos = (patients: Patient[]) =>
         // 舊資料的 notes 可能是純字串
         for (const raw of c.notes ?? []) {
           const n = typeof raw === 'string' ? { text: raw as string, completed: false } : raw;
+          if (!n.text?.trim()) continue;   // 剛按＋還沒打字的空待辦不算一件事
           byText.set(n.text, (byText.get(n.text) ?? true) && n.completed);
         }
       }
