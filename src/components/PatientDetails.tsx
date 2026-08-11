@@ -26,60 +26,11 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Patient, ENTChecklist, STATUS_TONE, GENDER_TEXT, relDay, asText } from '../types';
 import Markdown from './Markdown';
 import { format, differenceInCalendarDays, startOfWeek, addDays } from 'date-fns';
+// 「複製 Prompt」直接給 repo 根目錄那份 briefing prompt 本體（會產交班報告 + JSON）。
+// 用 ?raw 讀檔而非在這裡複製一份，規格才只有一個來源，改 md 就生效。
+import BRIEFING_PROMPT from '../../ENT_ward_round_briefing_prompt.md?raw';
 
-const JSON_IMPORT_PROMPT = `你是一個醫療資料結構化助手。病患的基本資料（姓名、床號、病歷號、年齡、性別、入院日期）已建立，請根據我提供的病患臨床資訊，產出下列 JSON。
-
-## 欄位定義（不要輸出 id；沒有值的選填欄位「直接不要輸出該鍵」，不要寫空字串或「省略」）
-
-medications[] 每筆＝一個藥物：
-- name 藥名、dose 劑量(如 500mg)、frequency 頻率(如 BID/QID/Q8H/PRN)、startDate YYYY-MM-DD
-- 選填：route 途徑(PO/IV)、endDate、stopReason
-
-labTests[] 每筆＝一個檢驗值（例：WBC、Crea、Na 各一筆）：
-- name 項目、orderedDate YYYY-MM-DD
-- 不用輸出 status：系統依有無 value 自動判定（已開單但結果未出，就不要給 value）
-- 選填：value 數值、unit 單位、referenceRange、category
-- value 只放純數字（如 "7.4"、"1.17"），單位一律另放 unit 欄（如 "mg/dL"、"sec"、"%"），
-  不可寫成 "7.4 mg/dL" 這種把單位塞進 value 的形式
-- category 只能從下列七個擇一，不得自創：CBC/DC、生化、凝血、電解質、尿液、培養、其他
-  對映：CBC/DC(WBC、RBC、Hb、Ht、Plt、Seg…) → CBC/DC；腎功能(BUN、Crea、eGFR)、
-  肝功能(SGOT、SGPT)、Glucose、Ca、Alb → 生化；Na、K、Cl、Mg、P → 電解質；
-  PT、INR、APTT → 凝血；尿液 → 尿液；細菌培養 → 培養；其餘 → 其他
-- 只有異常才加：isAbnormal:true、abnormalDir "H" 或 "L"
-- 不得遺漏：資料裡出現的每一個檢驗值都要有對應的一筆，輸出前逐項清點一次
-
-examinations[] 每筆＝一項影像/檢查(如 CXR、CT Neck)：
-- name、orderedDate、status；選填 finding 報告內容
-- 病理送檢未回報者亦列一筆，status 填 "pending"
-
-dailyChecks[] 每筆＝某一天的查房待辦（一天一筆，date 用該次查房日期）：
-- date YYYY-MM-DDTHH:mm:ssZ（必填）
-- notes: [{ "text": "待辦", "completed": false }]
-  —— 這天該做／該追的事，一件一則，例：「追 CT 報告」「明天拔 drain」「換藥」。
-  必須是「可執行的事」，不是狀態描述：寫「追 CT 報告」，不寫「wound clean」。
-  已經完成的寫 completed: true；沒事可列就給 []
-- 不要輸出其他欄位（bleeding、airway、painLevel 等評估項目一律不用產生）
-
-頂層另有：
-- diagnosis：優先「原文照抄」progress note 的 problem list（或 A/Assessment 段的診斷列），
-  不改寫、不重組語序。無 problem list 時才取術後診斷或入院診斷，格式
-  「{側別} {部位} {診斷} s/p {術式}」。病理回報後以病理診斷取代臨床推測診斷。
-  同一病人每日用字須一致——除非診斷實質改變，否則不要換句話說。
-- status："Stable" / "Critical" / "Discharge Pending"
-- opDate：手術日期 YYYY-MM-DD（已排刀或已開刀才填，無則省略）
-- opProcedure：術式名稱（有 opDate 才填）；多場刀時取主手術一場
-
-## 規則
-
-- 不要輸出 id 欄位（系統會自動產生）
-- 沒有資料的選填欄位整個省略，不要輸出空字串；沒有資料的陣列輸出 []
-- 只輸出純 JSON，不要 \`\`\`json 標記，直接從 { 開始到 } 結束
-
-## 病患資料
-
-（在此貼上病患臨床資訊，例如藥囑、生命徵象、檢驗報告、影像報告）`;
-
-// 交班報告與匯入 JSON 的分隔標記，與 data-to-list/ENT_ward_round_briefing_prompt.md 一致
+// 交班報告與匯入 JSON 的分隔標記，與 ENT_ward_round_briefing_prompt.md 一致
 const BRIEFING_SENTINEL = '===IMPORT-JSON===';
 
 // 院內 AI 常在報告前面加上安全聲明或「以下為查房報告：」之類的開場白。
@@ -1348,12 +1299,12 @@ export default function PatientDetails({ patient, onUpdate, onStatusChange, onDe
                   <div className="flex items-center justify-between bg-natural-50 border border-natural-200 rounded-xl px-4 py-3">
                     <p className="text-xs text-natural-500 leading-relaxed">
                       查房交班報告可<strong>整份貼上</strong>（含 {BRIEFING_SENTINEL} 之前的 Markdown）；<br/>
-                      也可只貼純 JSON —— 先複製右側 Prompt 給院內 AI，再貼回傳結果。<br/>
+                      也可只貼純 JSON。右側 Prompt 就是查房 prompt 本體，複製給院內 AI 即可。<br/>
                       <span className="text-natural-400">基本資料（姓名、床號等）已由截圖匯入，此處只需臨床內容。</span>
                     </p>
                     <button
                       onClick={() => {
-                        navigator.clipboard.writeText(JSON_IMPORT_PROMPT);
+                        navigator.clipboard.writeText(BRIEFING_PROMPT);
                         setPromptCopied(true);
                         setTimeout(() => setPromptCopied(false), 2000);
                       }}
