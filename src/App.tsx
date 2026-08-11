@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Patient, ENTChecklist, STATUS_TONE, GENDER_TEXT, relDay, asText } from './types';
-import PatientDetails from './components/PatientDetails';
+import PatientDetails, { dayTodos } from './components/PatientDetails';
 import PatientForm from './components/PatientForm';
 import ImportModal from './components/ImportModal';
 import TodaySchedule from './components/TodaySchedule';
@@ -49,7 +49,7 @@ import {
   writeBatch
 } from 'firebase/firestore';
 import { onAuthStateChanged, User } from 'firebase/auth';
-import { differenceInCalendarDays } from 'date-fns';
+import { differenceInCalendarDays, format } from 'date-fns';
 import { wardOf } from './wards';
 
 // 排序用的臨床優先序（與 STATUS_TONE 的顯示順序無關）
@@ -169,11 +169,12 @@ export default function App() {
 
   const selectedPatient = patients.find(p => p.id === selectedPatientId);
 
-  // 還有沒勾掉的待辦 → 床號上點一顆小紅點。舊資料的 note 可能是純字串。
+  // 還有沒勾掉的待辦 → 床號上點一顆小紅點。
+  // 範圍與查房頁一致（dayTodos 只給「今天以前」），否則匯入到未來日期的待辦
+  // 會讓紅點亮著、點進去卻看不到也勾不掉。字串型的舊資料由 dayTodos 內部處理。
   const hasTodo = (p: Patient) =>
-    (p.dailyChecks || []).some(c => (c.notes || []).some((n: any) =>
-      typeof n === 'string' ? n.trim() !== '' : !n.completed && (n.text || '').trim() !== ''
-    ));
+    dayTodos(p.dailyChecks || [], format(new Date(), 'yyyy-MM-dd'))
+      .some(t => !t.note.completed && t.note.text.trim() !== '');
 
   // 剛按出院的先留在清單上，重整後才歸到出院清單 —— 免得點下去人就不見了
   const stillHere = (p: Patient) => p.status !== 'Discharged' || justDischarged.has(p.id);
