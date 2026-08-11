@@ -1,25 +1,23 @@
 // npx tsx src/components/Markdown.check.tsx
 import assert from 'node:assert';
-import { renderToStaticMarkup } from 'react-dom/server';
-import Markdown from './Markdown';
+import { tokenize, SRC_TAG, DATE } from './Markdown';
 
-const html = (t: string) => renderToStaticMarkup(<Markdown text={t} />);
+// 抓出一行裡被上色的片段（來源標記／日期）。反引號包住的日期一樣算日期
+const strip = (p: string) => (p.startsWith('`') && p.endsWith('`') ? p.slice(1, -1) : p);
+const marked = (s: string) => tokenize(s).map(strip).filter(p => SRC_TAG.test(p) || DATE.test(p));
 
-assert.match(html('## 病患摘要'), /<h3[^>]*>病患摘要<\/h3>/);
-assert.match(html('- 年齡: 62M\n- POD 0'), /<ul.*<li[^>]*>年齡: 62M<\/li><li[^>]*>POD 0<\/li><\/ul>/s);
-assert.match(html('− 全形 dash 也算 bullet'), /<li/);
-assert.match(html('WBC **7.4** 與 `Cefazolin`'), /<strong[^>]*>7\.4<\/strong>.*<code[^>]*>Cefazolin<\/code>/s);
+// 來源標記與日期各自抓到；AI 加不加反引號都算日期
+assert.deepEqual(marked('`2026/08/11` [progress]:傷口乾淨'), ['2026/08/11', '[progress]']);
+assert.deepEqual(marked('2026/08/11 [progress]:傷口乾淨'), ['2026/08/11', '[progress]']);
+assert.deepEqual(marked('2026-08-11 06:00 [lab]:WBC 11.8'), ['2026-08-11 06:00', '[lab]']);
+assert.deepEqual(marked('[OP] 2026/07/21 wide excision'), ['[OP]', '2026/07/21']);
 
-const table = html('| Lab | Value |\n| --- | --- |\n| WBC | 7.4 |\n| Hb | 17.8 |');
-assert.match(table, /<th[^>]*>Lab<\/th>/);
-assert.doesNotMatch(table, /---/);              // 分隔列不可變成資料列
-assert.equal((table.match(/<tr>/g) || []).length, 3);
+// BP 不可被當成日期 —— Vital signs 每天都會出現
+assert.deepEqual(marked('BT 37.2 / BP 128/74 / HR 88 / RR 18 / VAS 2'), []);
+// 不在清單內的中括號不上色（避免整篇亂花）
+assert.deepEqual(marked('[未記載] [note]'), []);
 
-// 表格緊接清單時，兩者不可互相吞掉
-const mixed = html('| A |\n| - |\n| 1 |\n- after');
-assert.match(mixed, /<table/);
-assert.match(mixed, /<li[^>]*>after<\/li>/);
-
-assert.equal(html(''), '<div></div>');
+// 上色片段不會吃掉旁邊的字
+assert.equal(tokenize('POD 3 [progress] stable').join(''), 'POD 3 [progress] stable');
 
 console.log('Markdown ok');

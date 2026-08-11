@@ -17,6 +17,7 @@ npm run build    # 產出 dist/
 ```bash
 npx tsx src/wards.check.ts
 npx tsx src/components/TodaySchedule.check.tsx
+npx tsx src/components/Markdown.check.tsx
 ```
 
 寫法：`node:assert` + 檔尾 `console.log('xxx ok')`，第一行註解寫執行指令。新增非平凡邏輯時比照辦理，不要引入 vitest/jest。

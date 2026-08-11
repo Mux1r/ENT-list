@@ -8,13 +8,27 @@ const HEADING = /^(#{1,6})\s+(.*)$/;
 const HR = /^\s*([-=_═─]{3,})\s*$/;
 const TABLE_SEP = /^[\s|:-]+$/;
 
-// **粗體** 與 `code`，其餘原樣輸出
+// 行內語法。日期與來源標記不必等 AI 加反引號，直接照字樣抓。
+// 日期只認四位數年份 —— 否則 Vital signs 的「BP 128/74」會被當成日期。
+export const SRC_TAG = /^\[(?:progress|vital|lab|exam|consult|OP)\]$/i;
+export const DATE = /^\d{4}[/-]\d{1,2}[/-]\d{1,2}(?:\s+\d{1,2}:\d{2})?$/;
+const TOKEN = /(\*\*[^*]+\*\*|`[^`]+`|\[(?:progress|vital|lab|exam|consult|OP)\]|\d{4}[/-]\d{1,2}[/-]\d{1,2}(?:\s+\d{1,2}:\d{2})?)/gi;
+
+export const tokenize = (s: string) => s.split(TOKEN);
+
 const inline = (s: string) =>
-  s.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).map((part, i) => {
+  tokenize(s).map((part, i) => {
     if (part.startsWith('**') && part.endsWith('**'))
       return <strong key={i} className="font-bold text-natural-900">{part.slice(2, -2)}</strong>;
-    if (part.startsWith('`') && part.endsWith('`'))
+    // 反引號包起來的日期也走日期樣式 —— AI 加不加反引號，看起來都一樣
+    if (part.startsWith('`') && part.endsWith('`') && !DATE.test(part.slice(1, -1)))
       return <code key={i} className="px-1 py-0.5 bg-natural-100 rounded text-[11px] font-mono text-clinical-700">{part.slice(1, -1)}</code>;
+    if (part.startsWith('`') && part.endsWith('`')) part = part.slice(1, -1);
+    // 來源標記：綠底。日期：藍底。兩者一眼分得開
+    if (SRC_TAG.test(part))
+      return <span key={i} className="px-1 py-0.5 bg-sage-50 rounded text-[11px] font-mono text-sage-700">{part}</span>;
+    if (DATE.test(part))
+      return <span key={i} className="px-1 py-0.5 bg-clinical-50 rounded text-[11px] font-mono text-clinical-700">{part}</span>;
     return part;
   });
 
