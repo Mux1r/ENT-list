@@ -38,16 +38,25 @@ medications[] 每筆＝一個藥物：
 labTests[] 每筆＝一個檢驗值（例：WBC、Crea、Na 各一筆）：
 - name 項目、orderedDate YYYY-MM-DD
 - 不用輸出 status：系統依有無 value 自動判定（已開單但結果未出，就不要給 value）
-- 選填：value 數值、unit 單位、referenceRange、category(CBC/DC、生化、凝血、電解質、尿液、培養、其他)
+- 選填：value 數值、unit 單位、referenceRange、category
+- value 只放純數字（如 "7.4"、"1.17"），單位一律另放 unit 欄（如 "mg/dL"、"sec"、"%"），
+  不可寫成 "7.4 mg/dL" 這種把單位塞進 value 的形式
+- category 只能從下列七個擇一，不得自創：CBC/DC、生化、凝血、電解質、尿液、培養、其他
+  對映：CBC/DC(WBC、RBC、Hb、Ht、Plt、Seg…) → CBC/DC；腎功能(BUN、Crea、eGFR)、
+  肝功能(SGOT、SGPT)、Glucose、Ca、Alb → 生化；Na、K、Cl、Mg、P → 電解質；
+  PT、INR、APTT → 凝血；尿液 → 尿液；細菌培養 → 培養；其餘 → 其他
 - 只有異常才加：isAbnormal:true、abnormalDir "H" 或 "L"
+- 不得遺漏：資料裡出現的每一個檢驗值都要有對應的一筆，輸出前逐項清點一次
 
 examinations[] 每筆＝一項影像/檢查(如 CXR、CT Neck)：
 - name、orderedDate、status；選填 finding 報告內容
+- 病理送檢未回報者亦列一筆，status 填 "pending"
 
 dailyChecks[] 每筆＝某一天的查房待辦（一天一筆，date 用該次查房日期）：
 - date YYYY-MM-DDTHH:mm:ssZ（必填）
 - notes: [{ "text": "待辦", "completed": false }]
   —— 這天該做／該追的事，一件一則，例：「追 CT 報告」「明天拔 drain」「換藥」。
+  必須是「可執行的事」，不是狀態描述：寫「追 CT 報告」，不寫「wound clean」。
   已經完成的寫 completed: true；沒事可列就給 []
 - 不要輸出其他欄位（bleeding、airway、painLevel 等評估項目一律不用產生）
 
@@ -57,6 +66,8 @@ dailyChecks[] 每筆＝某一天的查房待辦（一天一筆，date 用該次�
   「{側別} {部位} {診斷} s/p {術式}」。病理回報後以病理診斷取代臨床推測診斷。
   同一病人每日用字須一致——除非診斷實質改變，否則不要換句話說。
 - status："Stable" / "Critical" / "Discharge Pending"
+- opDate：手術日期 YYYY-MM-DD（已排刀或已開刀才填，無則省略）
+- opProcedure：術式名稱（有 opDate 才填）；多場刀時取主手術一場
 
 ## 規則
 

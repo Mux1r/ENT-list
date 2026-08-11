@@ -318,6 +318,8 @@ dailyChecks[] 每筆＝某一天的查房待辦(一天一筆,date 用該次查�
   新增併發症、部位更正),否則不得換句話說、不得調整語序、不得增刪形容詞。
   系統會逐日比對此欄,用字漂移會被誤判為病情變化。
 - status:"Stable" / "Critical" / "Discharge Pending"
+- opDate:手術日期 YYYY-MM-DD(取自 operation note;已排刀或已開刀才填,無則省略)
+- opProcedure:術式名稱(有 opDate 才填);多場刀時取主手術一場
 
 ## JSON 段專屬規則
 

@@ -51,7 +51,7 @@ npx tsx src/components/TodaySchedule.check.tsx
 ### 兩條資料匯入路徑
 
 1. **截圖匯入病患**（[ImportModal.tsx](src/components/ImportModal.tsx) → [geminiService.ts](src/services/geminiService.ts)）：貼上院內系統的病患清單截圖，Gemini 抽出床號/病歷號/姓名/年齡，`writeBatch` 一次寫入。這是 app 內唯一呼叫 AI 的地方。
-2. **貼上交班報告**（PatientDetails）：把病歷貼給**院內** AI（prompt 在 [ENT_ward_round_briefing_prompt.md](ENT_ward_round_briefing_prompt.md) / [AI-prompt.md](AI-prompt.md)），它回傳 markdown 報告 + `===IMPORT-JSON===` 分隔線 + 結構化 JSON，整段貼回 app 拆解。改動 prompt 檔的輸出格式就要同步改 `BRIEFING_SENTINEL` 附近的解析邏輯。
+2. **貼上交班報告**（PatientDetails）：把病歷貼給**院內** AI（prompt 在 [ENT_ward_round_briefing_prompt.md](ENT_ward_round_briefing_prompt.md)，其 `===IMPORT-JSON===` 之後的欄位定義與 `PatientDetails.tsx` 的 `JSON_IMPORT_PROMPT`（畫面上「複製 Prompt」給的那份）是同一份規格，改一邊要改兩邊），它回傳 markdown 報告 + `===IMPORT-JSON===` 分隔線 + 結構化 JSON，整段貼回 app 拆解。改動 prompt 檔的輸出格式就要同步改 `BRIEFING_SENTINEL` 附近的解析邏輯。
 
 `GEMINI_API_KEY` 由 `vite.config.ts` 的 `define` 在 build 時直接內嵌進 bundle——它是公開的，別放任何需要保密的 key。沒設 key 時截圖匯入靜默回傳空陣列。
 
