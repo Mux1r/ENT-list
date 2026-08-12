@@ -1041,14 +1041,15 @@ export default function PatientDetails({ patient, onUpdate, onStatusChange, onDe
                                   key={c ?? '全部'}
                                   onClick={() => setExamCat(c)}
                                   title={items.some(e => e.status === 'pending') ? `有 ${items.filter(e => e.status === 'pending').length} 筆還沒回報` : undefined}
-                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-colors ${
+                                  className={`relative inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold transition-colors ${
                                     on ? 'bg-sage-500 text-white' : 'bg-natural-100 text-natural-500 hover:bg-natural-200'
                                   }`}
                                 >
                                   {c ?? '全部'} {items.length}
-                                  {/* 這類還有沒回報的就點一顆小點，顏色與「待報告」標籤同一系 */}
+                                  {/* 還有沒回報的就在右上角點一顆小點，顏色與「待報告」標籤同一系。
+                                      白框是為了讓它壓在選中時的綠底上也分得出來 */}
                                   {items.some(e => e.status === 'pending') && (
-                                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${on ? 'bg-white' : 'bg-clay-500'}`} />
+                                    <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-clay-500 ring-1 ring-white" />
                                   )}
                                 </button>
                               );
