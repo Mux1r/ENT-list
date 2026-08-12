@@ -283,6 +283,9 @@ labTests[] 每筆＝一個檢驗值(例:WBC、Crea、Na 各一筆):
 examinations[] 每筆＝一項影像/檢查(如 CXR、CT Neck):
 - name、orderedDate、status;選填 finding 報告內容
 - 病理送檢未回報者亦列一筆,status 填 "pending"
+- category 九選一,原樣輸出:`X光`、`CT`、`MRI`、`PET`、`超音波`、`內視鏡`、`心電圖`、
+  `病理`、`其他`。PET-CT 歸 `PET`;CT 導引下切片歸 `CT`;echo(心臟超音波)歸 `超音波`,
+  ECG/EKG 才是 `心電圖`。無法判定就整個欄位省略(系統會依名稱自動歸類),不要自創分類。
 
 dailyChecks[] 每筆＝某一天的查房待辦(一天一筆,date 用該次查房日期;系統以日曆日比對,
 同一天重複匯入會覆寫而非新增):

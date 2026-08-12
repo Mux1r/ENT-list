@@ -26,6 +26,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Patient, ENTChecklist, STATUS_TONE, GENDER_TEXT, relDay, asText } from '../types';
 import Markdown from './Markdown';
 import { allTodos, dayOf, isBlankCheck, normalizeNotes } from '../todos';
+import { EXAM_CATEGORIES, ExamCategory, examCategory } from '../exams';
 import { format, differenceInCalendarDays, startOfWeek, addDays } from 'date-fns';
 // 「複製 Prompt」直接給 repo 根目錄那份 briefing prompt 本體（會產交班報告 + JSON）。
 // 用 ?raw 讀檔而非在這裡複製一份，規格才只有一個來源，改 md 就生效。
@@ -498,13 +499,15 @@ export default function PatientDetails({ patient, onUpdate, onStatusChange, onDe
   // Examinations
   const [showExamModal, setShowExamModal] = useState(false);
   const [editingExamId, setEditingExamId] = useState<string | null>(null);
-  const emptyExamForm = { name: '', orderedDate: today, status: 'pending' as Examination['status'], finding: '' };
+  const emptyExamForm = { name: '', orderedDate: today, status: 'pending' as Examination['status'], finding: '', category: '' };
   const [examForm, setExamForm] = useState(emptyExamForm);
+  // 分類篩選：null = 全部
+  const [examCat, setExamCat] = useState<ExamCategory | null>(null);
 
   const openAddExam = () => { setEditingExamId(null); setExamForm(emptyExamForm); setShowExamModal(true); };
   const openEditExam = (exam: Examination) => {
     setEditingExamId(exam.id);
-    setExamForm({ name: exam.name, orderedDate: exam.orderedDate, status: exam.status, finding: exam.finding || '' });
+    setExamForm({ name: exam.name, orderedDate: exam.orderedDate, status: exam.status, finding: exam.finding || '', category: exam.category || '' });
     setShowExamModal(true);
   };
   const saveExam = () => {
@@ -1016,10 +1019,42 @@ export default function PatientDetails({ patient, onUpdate, onStatusChange, onDe
             <div className="px-3 sm:px-5 pb-4 pt-3 border-t border-natural-50">
                   {(() => {
                     // 新的排前面；日期缺漏的沉底
-                    const exams = [...(patient.examinations || [])]
+                    const all = [...(patient.examinations || [])]
                       .sort((a, b) => (b.orderedDate || '').localeCompare(a.orderedDate || ''));
+                    // 沒有任何一筆的分類就不佔位置，手機上那排鈕才不會擠成兩行。
+                    // 排序＝該分類最新一筆的日期，新的放左邊（all 已按日期新到舊，find 到的就是最新那筆）
+                    const latestOf = (c: string) => all.find(e => examCategory(e) === c)?.orderedDate || '';
+                    const cats = EXAM_CATEGORIES
+                      .filter(c => all.some(e => examCategory(e) === c))
+                      .sort((a, b) => latestOf(b).localeCompare(latestOf(a)));
+                    // 選中的分類被刪光時自動退回「全部」，不然那排鈕會消失、人卡在空畫面
+                    const exams = examCat && cats.includes(examCat) ? all.filter(e => examCategory(e) === examCat) : all;
                     return (
                       <div className="space-y-3">
+                        {cats.length > 1 && (
+                          <div className="flex flex-wrap gap-1">
+                            {[null, ...cats].map(c => {
+                              const items = c === null ? all : all.filter(e => examCategory(e) === c);
+                              const on = examCat === c;
+                              return (
+                                <button
+                                  key={c ?? '全部'}
+                                  onClick={() => setExamCat(c)}
+                                  title={items.some(e => e.status === 'pending') ? `有 ${items.filter(e => e.status === 'pending').length} 筆還沒回報` : undefined}
+                                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-colors ${
+                                    on ? 'bg-sage-500 text-white' : 'bg-natural-100 text-natural-500 hover:bg-natural-200'
+                                  }`}
+                                >
+                                  {c ?? '全部'} {items.length}
+                                  {/* 這類還有沒回報的就點一顆小點，顏色與「待報告」標籤同一系 */}
+                                  {items.some(e => e.status === 'pending') && (
+                                    <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${on ? 'bg-white' : 'bg-clay-500'}`} />
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
                         {exams.length === 0 && <p className="text-xs text-natural-300 italic py-2">尚無檢查紀錄</p>}
                         {/* 只露日期＋名稱，報告內容點開才看 —— 用原生 details，不用自己管展開狀態 */}
                         {exams.map(exam => (
@@ -1465,12 +1500,22 @@ export default function PatientDetails({ patient, onUpdate, onStatusChange, onDe
                   <input type="date" value={examForm.orderedDate} onChange={e => setExamForm(p => ({ ...p, orderedDate: e.target.value }))} className="w-full px-3 py-2 bg-natural-50 border border-natural-200 rounded-lg text-sm focus:ring-2 focus:ring-sage-500/20 focus:border-sage-500 outline-hidden" />
                 </div>
               </div>
-              <div>
-                <label className="block text-[10px] font-bold text-natural-400 uppercase tracking-widest mb-1">狀態</label>
-                <select value={examForm.status} onChange={e => setExamForm(p => ({ ...p, status: e.target.value as Examination['status'] }))} className="w-full px-3 py-2 bg-natural-50 border border-natural-200 rounded-lg text-sm focus:ring-2 focus:ring-sage-500/20 focus:border-sage-500 outline-hidden">
-                  <option value="pending">待報告</option>
-                  <option value="resulted">已回報</option>
-                </select>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-natural-400 uppercase tracking-widest mb-1">分類</label>
+                  {/* 留空＝依名稱自動判斷（見 exams.ts），猜錯的時候才手動選 */}
+                  <select value={examForm.category} onChange={e => setExamForm(p => ({ ...p, category: e.target.value }))} className="w-full px-3 py-2 bg-natural-50 border border-natural-200 rounded-lg text-sm focus:ring-2 focus:ring-sage-500/20 focus:border-sage-500 outline-hidden">
+                    <option value="">自動（依名稱）</option>
+                    {EXAM_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-natural-400 uppercase tracking-widest mb-1">狀態</label>
+                  <select value={examForm.status} onChange={e => setExamForm(p => ({ ...p, status: e.target.value as Examination['status'] }))} className="w-full px-3 py-2 bg-natural-50 border border-natural-200 rounded-lg text-sm focus:ring-2 focus:ring-sage-500/20 focus:border-sage-500 outline-hidden">
+                    <option value="pending">待報告</option>
+                    <option value="resulted">已回報</option>
+                  </select>
+                </div>
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-natural-400 uppercase tracking-widest mb-1">檢查結果 / 描述</label>

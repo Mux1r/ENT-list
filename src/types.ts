@@ -85,6 +85,8 @@ export interface Examination {
   orderedDate: string;
   status: 'pending' | 'resulted';
   finding?: string;
+  // X光／CT／MRI／PET／病理。沒填就由 examCategory() 從名稱猜（見 exams.ts）
+  category?: string;
 }
 
 export interface Patient {

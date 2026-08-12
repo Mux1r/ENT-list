@@ -17,6 +17,7 @@ npm run build    # 產出 dist/
 ```bash
 npx tsx src/wards.check.ts
 npx tsx src/todos.check.ts
+npx tsx src/exams.check.ts
 npx tsx src/components/TodaySchedule.check.tsx
 npx tsx src/components/Markdown.check.tsx
 ```
@@ -47,6 +48,7 @@ npx tsx src/components/Markdown.check.tsx
 
 - [App.tsx](src/App.tsx) — 唯一的資料層。`onSnapshot` 訂閱 `patients` 即時同步，所有 Firestore 寫入都在這裡；子元件透過 callback 往上報。也負責病患列表、排序、批次選取、出院流程。
 - [PatientDetails.tsx](src/components/PatientDetails.tsx) — 分頁式病患詳情（交班 / 用藥 / 檢驗 / 檢查 / 查房）。查房頁只有待辦清單，評估項目的 UI 已移除；`ENTChecklist` 的評估欄位仍會被匯入與保存。
+- [exams.ts](src/exams.ts) — 檢查分頁的分類（X光/CT/MRI/PET/超音波/內視鏡/心電圖/病理/其他）。`Examination.category` 沒填時 `examCategory()` 從檢查名稱猜，舊資料靠這個歸位；prompt 也要求 AI 輸出這個欄位，兩邊的分類清單要一致。
 - [todos.ts](src/todos.ts) — 查房待辦的純邏輯（`allTodos` 不分天累積、`isBlankCheck`、`ASSESS_KEYS`）。獨立成一支是因為 `PatientDetails.tsx` import 了 `.md?raw`，check 檔用 tsx 直接跑會炸。
 - [TodaySchedule.tsx](src/components/TodaySchedule.tsx) — 本週手術行事曆 + 跨日累積的未完成 checklist。`weekOps` / `pendingTodos` 是純函式並 export，給 check 檔用。
 - [wards.ts](src/wards.ts) — 床號 → 病房代碼。院內編碼規則（房號 ≥ 50 算 B 區、9 樓分區字母直接寫在床號裡、ICU 是 9I1/9I2）都在註解和 check 檔裡。
@@ -54,7 +56,7 @@ npx tsx src/components/Markdown.check.tsx
 ### 兩條資料匯入路徑
 
 1. **截圖匯入病患**（[ImportModal.tsx](src/components/ImportModal.tsx) → [geminiService.ts](src/services/geminiService.ts)）：貼上院內系統的病患清單截圖，Gemini 抽出床號/病歷號/姓名/年齡，`writeBatch` 一次寫入。這是 app 內唯一呼叫 AI 的地方。
-2. **貼上交班報告**（PatientDetails）：把病歷貼給**院內** AI（prompt 在 [ENT_ward_round_briefing_prompt.md](ENT_ward_round_briefing_prompt.md)，其 `===IMPORT-JSON===` 之後的欄位定義與 `PatientDetails.tsx` 的 `JSON_IMPORT_PROMPT`（畫面上「複製 Prompt」給的那份）是同一份規格，改一邊要改兩邊），它回傳 markdown 報告 + `===IMPORT-JSON===` 分隔線 + 結構化 JSON，整段貼回 app 拆解。改動 prompt 檔的輸出格式就要同步改 `BRIEFING_SENTINEL` 附近的解析邏輯。
+2. **貼上交班報告**（PatientDetails）：把病歷貼給**院內** AI（prompt 只有一份，在 [ENT_ward_round_briefing_prompt.md](ENT_ward_round_briefing_prompt.md)，畫面上「複製 Prompt」用 `?raw` 直接讀它），它回傳 markdown 報告 + `===IMPORT-JSON===` 分隔線 + 結構化 JSON，整段貼回 app 拆解。該檔 `===IMPORT-JSON===` 之後的欄位定義就是匯入規格，改動輸出格式就要同步改 `BRIEFING_SENTINEL` 附近的解析邏輯。
 
 `GEMINI_API_KEY` 由 `vite.config.ts` 的 `define` 在 build 時直接內嵌進 bundle——它是公開的，別放任何需要保密的 key。沒設 key 時截圖匯入靜默回傳空陣列。
 
