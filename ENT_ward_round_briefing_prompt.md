@@ -283,6 +283,8 @@ labTests[] 每筆＝一個檢驗值(例:WBC、Crea、Na 各一筆):
 examinations[] 每筆＝一項影像/檢查(如 CXR、CT Neck):
 - name、orderedDate、status;選填 finding 報告內容
 - 病理送檢未回報者亦列一筆,status 填 "pending"
+- 報告已回報且 impression 有異常發現者,加 isAbnormal:true(僅有/無,不分 H/L);
+  明確寫無異常或未回報者不加此欄位。判定依報告原文,不臆測。
 - category 九選一,原樣輸出:`X光`、`CT`、`MRI`、`PET`、`超音波`、`內視鏡`、`心電圖`、
   `病理`、`其他`。PET-CT 歸 `PET`;CT 導引下切片歸 `CT`;echo(心臟超音波)歸 `超音波`,
   ECG/EKG 才是 `心電圖`。無法判定就整個欄位省略(系統會依名稱自動歸類),不要自創分類。

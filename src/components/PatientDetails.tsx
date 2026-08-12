@@ -499,7 +499,7 @@ export default function PatientDetails({ patient, onUpdate, onStatusChange, onDe
   // Examinations
   const [showExamModal, setShowExamModal] = useState(false);
   const [editingExamId, setEditingExamId] = useState<string | null>(null);
-  const emptyExamForm = { name: '', orderedDate: today, status: 'pending' as Examination['status'], finding: '', category: '' };
+  const emptyExamForm = { name: '', orderedDate: today, status: 'pending' as Examination['status'], finding: '', category: '', isAbnormal: false };
   const [examForm, setExamForm] = useState(emptyExamForm);
   // 分類篩選：null = 全部
   const [examCat, setExamCat] = useState<ExamCategory | null>(null);
@@ -507,7 +507,7 @@ export default function PatientDetails({ patient, onUpdate, onStatusChange, onDe
   const openAddExam = () => { setEditingExamId(null); setExamForm(emptyExamForm); setShowExamModal(true); };
   const openEditExam = (exam: Examination) => {
     setEditingExamId(exam.id);
-    setExamForm({ name: exam.name, orderedDate: exam.orderedDate, status: exam.status, finding: exam.finding || '', category: exam.category || '' });
+    setExamForm({ name: exam.name, orderedDate: exam.orderedDate, status: exam.status, finding: exam.finding || '', category: exam.category || '', isAbnormal: exam.isAbnormal || false });
     setShowExamModal(true);
   };
   const saveExam = () => {
@@ -1066,6 +1066,9 @@ export default function PatientDetails({ patient, onUpdate, onStatusChange, onDe
                               {exam.status === 'pending' && (
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-clay-100 text-clay-700 shrink-0">待報告</span>
                               )}
+                              {exam.isAbnormal && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-terracotta-100 text-terracotta-700 shrink-0">異常</span>
+                              )}
                               {editData && (
                                 <div className="flex gap-1 shrink-0 ml-auto">
                                   <button onClick={(e) => { e.preventDefault(); openEditExam(exam); }} className="p-1.5 text-natural-300 hover:text-sage-500 transition-colors"><Edit3 className="w-3.5 h-3.5" /></button>
@@ -1516,6 +1519,14 @@ export default function PatientDetails({ patient, onUpdate, onStatusChange, onDe
                     <option value="pending">待報告</option>
                     <option value="resulted">已回報</option>
                   </select>
+                </div>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-natural-400 uppercase tracking-widest mb-1">報告判讀</label>
+                {/* 影像報告是文字，只分有無異常；檢驗那邊才有 H/L */}
+                <div className="flex rounded-lg overflow-hidden border border-natural-200 text-[10px] font-bold h-[38px]">
+                  <button type="button" onClick={() => setExamForm(p => ({ ...p, isAbnormal: false }))} className={`flex-1 transition-all ${!examForm.isAbnormal ? 'bg-natural-600 text-white' : 'text-natural-400 hover:bg-natural-50'}`}>無異常</button>
+                  <button type="button" onClick={() => setExamForm(p => ({ ...p, isAbnormal: true }))} className={`flex-1 transition-all border-l border-natural-200 ${examForm.isAbnormal ? 'bg-terracotta-500 text-white' : 'text-natural-400 hover:bg-natural-50'}`}>有異常</button>
                 </div>
               </div>
               <div>

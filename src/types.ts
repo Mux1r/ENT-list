@@ -87,6 +87,8 @@ export interface Examination {
   finding?: string;
   // X光／CT／MRI／PET／病理。沒填就由 examCategory() 從名稱猜（見 exams.ts）
   category?: string;
+  // 報告有沒有異常發現。影像是文字報告，只有「有／無」，不像檢驗分 H/L
+  isAbnormal?: boolean;
 }
 
 export interface Patient {
