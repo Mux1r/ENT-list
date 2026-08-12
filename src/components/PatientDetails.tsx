@@ -845,17 +845,19 @@ export default function PatientDetails({ patient, onUpdate, onStatusChange, onDe
                       <div className="space-y-3">
                         {active.length === 0 && <p className="text-xs text-natural-300 italic py-2">這天沒有用藥</p>}
                         {active.map(med => (
-                          <div key={med.id} className="flex items-center gap-3 p-3 bg-natural-50 rounded-xl border border-natural-100">
-                            <Pill className="w-4 h-4 text-sage-500 shrink-0" />
-                            <div className="flex-1 min-w-0 flex items-baseline gap-2">
+                          <div key={med.id} className={`flex items-center gap-3 p-3 bg-natural-50 rounded-xl border border-natural-100 transition-colors ${editData ? 'hover:border-sage-300' : ''}`}>
+                            {/* 編輯模式下整列就是編輯鈕，不再另外放鉛筆；平常 disabled，等於一般文字 */}
+                            <button
+                              onClick={() => openEditMed(med)}
+                              disabled={!editData}
+                              title={editData ? '編輯這筆用藥' : undefined}
+                              className="flex-1 min-w-0 flex items-baseline gap-2 text-left cursor-pointer disabled:cursor-default"
+                            >
                               <span className="text-sm font-bold text-natural-900 shrink-0">{med.name}</span>
                               <span className="text-xs text-natural-400 truncate">{med.dose} · {med.frequency}{med.route ? ` · ${med.route}` : ''}</span>
-                            </div>
+                            </button>
                             {editData && (
-                              <div className="flex gap-1 shrink-0">
-                                <button onClick={() => openEditMed(med)} className="p-1.5 text-natural-300 hover:text-sage-500 transition-colors"><Edit3 className="w-3.5 h-3.5" /></button>
-                                <button onClick={() => { setStoppingMedId(med.id); setStopReason(''); }} className="p-1.5 text-natural-300 hover:text-terracotta-500 transition-colors" title="停用"><Ban className="w-3.5 h-3.5" /></button>
-                              </div>
+                              <button onClick={() => { setStoppingMedId(med.id); setStopReason(''); }} className="p-1.5 shrink-0 text-natural-300 hover:text-terracotta-500 transition-colors" title="停用"><Ban className="w-3.5 h-3.5" /></button>
                             )}
                           </div>
                         ))}
@@ -869,7 +871,6 @@ export default function PatientDetails({ patient, onUpdate, onStatusChange, onDe
                               <div className="mt-2 space-y-2">
                                 {stopped.map(med => (
                                   <div key={med.id} className="flex items-center gap-3 p-3 bg-natural-50/50 rounded-xl border border-natural-100 opacity-60">
-                                    <Ban className="w-4 h-4 text-natural-300 shrink-0" />
                                     <div className="flex-1 min-w-0 flex items-baseline gap-2">
                                       <span className="text-sm font-bold text-natural-400 line-through shrink-0">{med.name}</span>
                                       <span className="text-xs text-natural-300 truncate">{med.dose} · {med.frequency}{med.route ? ` · ${med.route}` : ''}{med.stopReason ? ` ｜ ${med.stopReason}` : ''}</span>
@@ -1091,7 +1092,8 @@ export default function PatientDetails({ patient, onUpdate, onStatusChange, onDe
                                       )}
                                     </div>
 
-                                    <div className="flex-1 shrink-0 max-w-md">
+                                    {/* 撐滿卡片：日期靠右成一欄，手機上一列擠不下時文字自己縮，日期不會被推掉 */}
+                                    <div className="min-w-0">
                                       <ul className="space-y-2">
                                         {/* 完成的沉到最下面。carried = 掛在別天的（之前留下來、或先排到之後的），改動寫回原本那筆，只有當天自己的能排序 */}
                                         {todoItems.map(({ checkId, day, idx, note }) => {
