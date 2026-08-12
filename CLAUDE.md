@@ -16,6 +16,7 @@ npm run build    # 產出 dist/
 
 ```bash
 npx tsx src/wards.check.ts
+npx tsx src/todos.check.ts
 npx tsx src/components/TodaySchedule.check.tsx
 npx tsx src/components/Markdown.check.tsx
 ```
@@ -45,7 +46,8 @@ npx tsx src/components/Markdown.check.tsx
 ## 主要流程
 
 - [App.tsx](src/App.tsx) — 唯一的資料層。`onSnapshot` 訂閱 `patients` 即時同步，所有 Firestore 寫入都在這裡；子元件透過 callback 往上報。也負責病患列表、排序、批次選取、出院流程。
-- [PatientDetails.tsx](src/components/PatientDetails.tsx) — 分頁式病患詳情（交班 / 用藥 / 檢驗 / 檢查 / 查房）。查房頁只有待辦清單（`dayTodos` 跨日累積未勾的），評估項目的 UI 已移除；`ENTChecklist` 的評估欄位仍會被匯入與保存，`ASSESS_KEYS` 只用來判斷一筆紀錄是不是空的。
+- [PatientDetails.tsx](src/components/PatientDetails.tsx) — 分頁式病患詳情（交班 / 用藥 / 檢驗 / 檢查 / 查房）。查房頁只有待辦清單，評估項目的 UI 已移除；`ENTChecklist` 的評估欄位仍會被匯入與保存。
+- [todos.ts](src/todos.ts) — 查房待辦的純邏輯（`allTodos` 不分天累積、`isBlankCheck`、`ASSESS_KEYS`）。獨立成一支是因為 `PatientDetails.tsx` import 了 `.md?raw`，check 檔用 tsx 直接跑會炸。
 - [TodaySchedule.tsx](src/components/TodaySchedule.tsx) — 本週手術行事曆 + 跨日累積的未完成 checklist。`weekOps` / `pendingTodos` 是純函式並 export，給 check 檔用。
 - [wards.ts](src/wards.ts) — 床號 → 病房代碼。院內編碼規則（房號 ≥ 50 算 B 區、9 樓分區字母直接寫在床號裡、ICU 是 9I1/9I2）都在註解和 check 檔裡。
 

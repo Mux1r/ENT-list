@@ -25,6 +25,7 @@ import { Medication, LabTest, Examination } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { Patient, ENTChecklist, STATUS_TONE, GENDER_TEXT, relDay, asText } from '../types';
 import Markdown from './Markdown';
+import { allTodos, dayOf, isBlankCheck, normalizeNotes } from '../todos';
 import { format, differenceInCalendarDays, startOfWeek, addDays } from 'date-fns';
 // 「複製 Prompt」直接給 repo 根目錄那份 briefing prompt 本體（會產交班報告 + JSON）。
 // 用 ?raw 讀檔而非在這裡複製一份，規格才只有一個來源，改 md 就生效。
@@ -39,13 +40,6 @@ const stripPreamble = (md: string) => {
   const i = md.search(/(^|\n)\s*#*\s*病患摘要/);
   return i > 0 ? md.slice(i).trimStart() : md;
 };
-
-// 查房評估欄位。畫面上已不顯示（查房只留待辦），但匯入的資料照樣存著，
-// 這裡只用來判斷一筆紀錄是不是空的 —— 要重新做評估 UI 的話翻 git 記錄。
-const ASSESS_KEYS: (keyof ENTChecklist)[] = [
-  'bleeding', 'airway', 'fever', 'drainAmount', 'swallowing', 'facialNerve',
-  'painLevel', 'hoarseness', 'woundStatus', 'flap', 'tracheostomy', 'calcium',
-];
 
 // 分頁。badge 為右上角的提醒（數字或符號），回傳 0/'' 就不顯示。
 // label 只當 tooltip/aria 用；tab 本身只顯示 icon + 右上角提醒
@@ -70,10 +64,9 @@ const TABS: { key: string; label: string; icon: React.ReactNode; badge?: (p: Pat
   {
     key: 'rounds', label: 'Daily Round', icon: <ClipboardList className="w-4 h-4" />,
     // 只提醒還沒勾掉的待辦，不是紀錄筆數。
-    // 數的範圍要和查房頁真的看得到的一致（dayTodos 只給「今天以前」），
-    // 否則匯入到未來日期的待辦會變成一個點進去看不到、也勾不掉的紅字。
-    badge: p => dayTodos(p.dailyChecks || [], format(new Date(), 'yyyy-MM-dd'))
-      .filter(t => !t.note.completed && t.note.text.trim()).length,
+    // 排在未來的（先寫下明天要做的事）不算進來，否則紅字會從今天就一直亮著。
+    badge: p => allTodos(p.dailyChecks || [])
+      .filter(t => !t.note.completed && t.day <= format(new Date(), 'yyyy-MM-dd') && t.note.text.trim()).length,
     tone: 'bg-terracotta-500 text-white',
   },
 ];
@@ -122,25 +115,6 @@ interface PatientDetailsProps {
   onCloseJson: () => void;
 }
 
-// 日期一律取「日曆日」比對，避免 dailyChecks.date 帶時間造成差一天
-export const dayOf = (iso: string) => {
-  const d = new Date(iso);
-  return isNaN(d.getTime()) ? '' : format(d, 'yyyy-MM-dd');
-};
-
-// 沒有任何評估項目、也沒有任何有字的待辦 = 空白，不算一筆紀錄
-export const isBlankCheck = (c: ENTChecklist) =>
-  ASSESS_KEYS.every(k => c[k] === undefined) && !normalizeNotes(c.notes).some(n => n.text.trim());
-
-// 某天的待辦清單 = 當天 + 之前每一天的待辦；未完成在上，已完成反灰沉到最下面（勾掉不會消失）。
-// 跨日的項目是「借看」原紀錄，不複製 —— 勾選時寫回它原本那天，才不會每天複製一份。
-// ponytail: 住院久了下面那疊已完成會越積越長，真的礙眼再加「只留最近 N 筆／收合」
-export const dayTodos = (checks: ENTChecklist[], day: string) =>
-  checks
-    .flatMap(c => normalizeNotes(c.notes).map((note, idx) => ({ checkId: c.id, day: dayOf(c.date), idx, note })))
-    .filter(t => t.day <= day)
-    .sort((a, b) => Number(a.note.completed) - Number(b.note.completed) || a.day.localeCompare(b.day));
-
 // 邊打邊存的文字欄位。值要繞一圈 Firestore 才回來，若直接把 prop 當 value，
 // 自動選字（選取整個字再替換）會被回程的舊值蓋掉 → 出現 rumortumor。
 // 所以值由本地持有，沒在編輯時才吃外部更新（例如匯入 JSON）。
@@ -164,13 +138,6 @@ function LiveInput({ value, onChange, onEnter, autoFocus, className, placeholder
     />
   );
 }
-
-const normalizeNotes = (notes: ENTChecklist['notes'] | string | undefined): { text: string; completed: boolean }[] => {
-  // 舊資料的 notes 可能是字串，或字串陣列
-  if (Array.isArray(notes)) return notes.map(n => (typeof n === 'string' ? { text: n, completed: false } : n));
-  if (typeof notes === 'string') return [{ text: notes, completed: false }];
-  return [];
-};
 
 export default function PatientDetails({ patient, onUpdate, onStatusChange, onDelete, editHeader, jsonOpen, onCloseJson }: PatientDetailsProps) {
   const [activeTab, setActiveTab] = useState('rounds');
@@ -212,7 +179,7 @@ export default function PatientDetails({ patient, onUpdate, onStatusChange, onDe
   };
   const shownCheck = selectedCheck ?? draftCheck;
 
-  const todoItems = dayTodos(patient.dailyChecks, selectedDay);
+  const todoItems = allTodos(patient.dailyChecks);
 
 
   // 手術當天 = POD 0；明天要開 = -1。用 T00:00 解析成當地午夜，跨時區不會差一天
@@ -589,8 +556,8 @@ export default function PatientDetails({ patient, onUpdate, onStatusChange, onDe
             >
               {selectedDay === todayStr ? 'Today' : format(new Date(selectedDay), 'MM/dd (EEE)')}
             </button>
-            {/* 查房是記已經發生的事，未來的日期一律不給選 */}
-            <button onClick={() => shiftDay(1)} disabled={selectedDay >= todayStr} title="後一天" className="shrink-0 p-1.5 rounded-lg text-natural-300 hover:text-sage-600 hover:bg-natural-50 transition-colors disabled:opacity-30 disabled:hover:text-natural-300 disabled:hover:bg-transparent">
+            {/* 未來的日期可以選：查房當下就把之後要做的事先排進去 */}
+            <button onClick={() => shiftDay(1)} title="後一天" className="shrink-0 p-1.5 rounded-lg text-natural-300 hover:text-sage-600 hover:bg-natural-50 transition-colors">
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
@@ -617,8 +584,7 @@ export default function PatientDetails({ patient, onUpdate, onStatusChange, onDe
               </button>
               <button
                 onClick={() => setWeekStart(addDays(weekStart, 7))}
-                disabled={format(addDays(weekStart, 6), 'yyyy-MM-dd') >= todayStr}
-                className="p-1.5 rounded-lg text-natural-300 hover:text-sage-600 hover:bg-white transition-colors disabled:opacity-30 disabled:hover:text-natural-300 disabled:hover:bg-transparent"
+                className="p-1.5 rounded-lg text-natural-300 hover:text-sage-600 hover:bg-white transition-colors"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
@@ -626,10 +592,9 @@ export default function PatientDetails({ patient, onUpdate, onStatusChange, onDe
             <div className="flex justify-between gap-0.5 sm:gap-1 px-2 sm:px-4 pt-2 pb-4">
               {week.map(day => {
                 const isPicked = day === selectedDay;
-                const future = day > todayStr;
                 const n = dayCount?.(day);
                 return (
-                  <button key={day} onClick={() => pickDay(day)} disabled={future} className="flex flex-col items-center gap-1.5 flex-1 min-w-0 group disabled:opacity-30 disabled:cursor-default">
+                  <button key={day} onClick={() => pickDay(day)} className="flex flex-col items-center gap-1.5 flex-1 min-w-0 group">
                     <span className={`text-[10px] font-bold uppercase tracking-widest ${isPicked ? 'text-sage-600' : 'text-natural-300'}`}>
                       {format(new Date(day), 'EEE')}
                     </span>
@@ -637,7 +602,7 @@ export default function PatientDetails({ patient, onUpdate, onStatusChange, onDe
                       className={`w-9 h-9 sm:w-10 sm:h-10 rounded-full flex items-center justify-center text-sm font-bold border-2 transition-all ${
                         isPicked
                           ? 'bg-sage-500 border-sage-500 text-white shadow-sm'
-                          : `bg-white text-natural-500 ${future ? '' : 'group-hover:border-sage-300'} ${day === todayStr ? 'border-sage-300' : 'border-natural-200'}`
+                          : `bg-white text-natural-500 group-hover:border-sage-300 ${day === todayStr ? 'border-sage-300' : 'border-natural-200'}`
                       }`}
                     >
                       {format(new Date(day), 'd')}
@@ -1128,7 +1093,7 @@ export default function PatientDetails({ patient, onUpdate, onStatusChange, onDe
 
                                     <div className="flex-1 shrink-0 max-w-md">
                                       <ul className="space-y-2">
-                                        {/* 完成的沉到最下面。carried = 之前哪天留下來還沒勾的，改動寫回原本那筆 */}
+                                        {/* 完成的沉到最下面。carried = 掛在別天的（之前留下來、或先排到之後的），改動寫回原本那筆，只有當天自己的能排序 */}
                                         {todoItems.map(({ checkId, day, idx, note }) => {
                                           const carried = day !== selectedDay;
                                           const ownCount = normalizeNotes(check.notes).length;
@@ -1178,11 +1143,15 @@ export default function PatientDetails({ patient, onUpdate, onStatusChange, onDe
                                                     note.completed ? 'line-through text-natural-400' : 'text-natural-900'
                                                   }`}
                                                 />
-                                                {carried && (
-                                                  <span className="shrink-0 text-[9px] font-bold uppercase tracking-widest text-clay-500" title="從這天留下來的待辦">
-                                                    {format(new Date(day + 'T00:00'), 'MM/dd')}
-                                                  </span>
-                                                )}
+                                                {/* 每筆都標日期：逾期＝紅褐、今天＝綠、之後才要做的＝藍灰 */}
+                                                <span
+                                                  className={`shrink-0 text-[9px] font-bold uppercase tracking-widest empty:hidden ${
+                                                    day < todayStr ? 'text-terracotta-500' : day === todayStr ? 'text-sage-600' : 'text-clinical-500'
+                                                  }`}
+                                                  title={day < todayStr ? `${day} 留下來還沒做的` : day === todayStr ? '今天的待辦' : `排在 ${day} 要做的`}
+                                                >
+                                                  {relDay(day)}
+                                                </span>
                                               </div>
 
                                               <button

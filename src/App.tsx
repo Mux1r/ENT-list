@@ -29,7 +29,8 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Patient, ENTChecklist, STATUS_TONE, GENDER_TEXT, relDay, asText } from './types';
-import PatientDetails, { dayTodos } from './components/PatientDetails';
+import PatientDetails from './components/PatientDetails';
+import { allTodos } from './todos';
 import PatientForm from './components/PatientForm';
 import ImportModal from './components/ImportModal';
 import TodaySchedule from './components/TodaySchedule';
@@ -169,12 +170,12 @@ export default function App() {
 
   const selectedPatient = patients.find(p => p.id === selectedPatientId);
 
-  // 還有沒勾掉的待辦 → 床號上點一顆小紅點。
-  // 範圍與查房頁一致（dayTodos 只給「今天以前」），否則匯入到未來日期的待辦
-  // 會讓紅點亮著、點進去卻看不到也勾不掉。字串型的舊資料由 dayTodos 內部處理。
+  // 還有沒勾掉的待辦 → 床號上點一顆小紅點。與查房分頁的紅字同一組：
+  // 排在未來的（先寫下之後要做的事）不算，否則紅點會從今天就一直亮著。
+  // 字串型的舊資料由 allTodos 內部處理。
   const hasTodo = (p: Patient) =>
-    dayTodos(p.dailyChecks || [], format(new Date(), 'yyyy-MM-dd'))
-      .some(t => !t.note.completed && t.note.text.trim() !== '');
+    allTodos(p.dailyChecks || [])
+      .some(t => !t.note.completed && t.day <= format(new Date(), 'yyyy-MM-dd') && t.note.text.trim() !== '');
 
   // 剛按出院的先留在清單上，重整後才歸到出院清單 —— 免得點下去人就不見了
   const stillHere = (p: Patient) => p.status !== 'Discharged' || justDischarged.has(p.id);

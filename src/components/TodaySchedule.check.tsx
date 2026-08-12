@@ -8,6 +8,7 @@ import { Patient } from '../types';
 const today = format(new Date(), 'yyyy-MM-dd');
 const nowIso = new Date().toISOString();
 const yesterdayIso = new Date(Date.now() - 864e5).toISOString();
+const tomorrowIso = new Date(Date.now() + 864e5).toISOString();
 
 const p = (over: Partial<Patient>): Patient => ({
   id: over.name || 'x', name: 'X', bedNumber: '7A-01', age: 60, gender: 'Male',
@@ -49,6 +50,14 @@ assert.deepEqual(todo.map(x => x.p.name), ['未完甲', '全完乙']);   // 沒�
 assert.deepEqual(todo[0].undone.map(n => n.text), ['拔 drain']);   // 跨天同一項只算一筆
 assert.deepEqual(todo[0].done.map(n => n.text), ['已做的', '換藥']);
 assert.deepEqual(todo[1].undone, []);
+// 日期取最早出現的那天：跨天的「拔 drain」算昨天留下來的，畫面靠它上色
+assert.equal(todo[0].undone[0].day, format(new Date(Date.now() - 864e5), 'yyyy-MM-dd'));
+
+// 先排到之後幾天的待辦也會列出來（畫面標成未來色），日期就是那天
+const future = pendingTodos([
+  p({ name: '明天己', dailyChecks: [{ id: 'f', date: tomorrowIso, notes: [{ text: '明天拔 drain', completed: false }] }] }),
+]);
+assert.deepEqual(future[0].undone.map(n => n.day), [format(new Date(Date.now() + 864e5), 'yyyy-MM-dd')]);
 
 // 剛按＋還沒打字的空待辦不列入（否則排程會多一列空白）
 const blank = pendingTodos([

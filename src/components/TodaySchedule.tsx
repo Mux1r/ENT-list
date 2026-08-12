@@ -1,7 +1,8 @@
 import React, { useState, useRef } from 'react';
-import { Patient, STATUS_TONE, GENDER_TEXT } from '../types';
+import { Patient, STATUS_TONE, GENDER_TEXT, relDay } from '../types';
 import { Scissors, ClipboardList, ChevronRight, ChevronLeft, Check } from 'lucide-react';
 import { format, startOfWeek, addDays } from 'date-fns';
+import { dayOf, normalizeNotes } from '../todos';
 
 interface Props {
   patients: Patient[];
@@ -10,11 +11,6 @@ interface Props {
   tab: 'op' | 'todo';
   onTabChange: (tab: 'op' | 'todo') => void;
 }
-
-const sameDay = (iso: string, day: string) => {
-  const d = new Date(iso);
-  return !isNaN(d.getTime()) && format(d, 'yyyy-MM-dd') === day;
-};
 
 const activeOnly = (patients: Patient[]) => patients.filter(p => p.status !== 'Discharged');
 
@@ -31,20 +27,24 @@ export const weekOps = (patients: Patient[], now = new Date()) => {
 /**
  * 不分天，把每位病患所有記錄裡的待辦累積起來。
  * 同樣文字只留一筆，任一天沒打勾就算沒完成；沒完成的排前面，病患也是。
+ * day 取最早出現的那天（同一句話寫在好幾天時，看的是「從哪天拖到現在」）。
  */
 export const pendingTodos = (patients: Patient[]) =>
   activeOnly(patients)
     .map(p => {
-      const byText = new Map<string, boolean>();   // text -> completed
+      const byText = new Map<string, { completed: boolean; day: string }>();
       for (const c of p.dailyChecks ?? []) {
-        // 舊資料的 notes 可能是純字串
-        for (const raw of c.notes ?? []) {
-          const n = typeof raw === 'string' ? { text: raw as string, completed: false } : raw;
-          if (!n.text?.trim()) continue;   // 剛按＋還沒打字的空待辦不算一件事
-          byText.set(n.text, (byText.get(n.text) ?? true) && n.completed);
+        const day = dayOf(c.date);
+        for (const n of normalizeNotes(c.notes)) {
+          if (!n.text.trim()) continue;   // 剛按＋還沒打字的空待辦不算一件事
+          const prev = byText.get(n.text);
+          byText.set(n.text, {
+            completed: (prev?.completed ?? true) && n.completed,
+            day: prev && prev.day < day ? prev.day : day,
+          });
         }
       }
-      const all = [...byText].map(([text, completed]) => ({ text, completed }));
+      const all = [...byText].map(([text, v]) => ({ text, ...v }));
       return { p, undone: all.filter(n => !n.completed), done: all.filter(n => n.completed) };
     })
     .filter(x => x.undone.length + x.done.length > 0)
@@ -76,7 +76,8 @@ export default function TodaySchedule({ patients, onSelect, onUpdate, tab, onTab
     setPickedDay(next.some(d => d.day === today) ? today : next[0].day);
   };
   const todo = pendingTodos(patients);
-  const undoneCount = todo.reduce((n, x) => n + x.undone.length, 0);
+  // 分頁上的數字＝今天該做完的。先排到之後幾天的不算，否則數字從今天就一直掛在那裡
+  const undoneCount = todo.reduce((n, x) => n + x.undone.filter(t => t.day <= today).length, 0);
 
   // 勾掉的待辦先留在畫面上（跟主頁的「剛出院」一樣），離開這頁才會不見
   const [justDone, setJustDone] = useState<Set<string>>(new Set());
@@ -240,6 +241,15 @@ export default function TodaySchedule({ patients, onSelect, onUpdate, tab, onTab
                             </button>
                             <span className={`text-xs ${checked ? 'text-natural-300 line-through' : 'text-natural-600'}`}>
                               {n.text}
+                            </span>
+                            {/* 逾期＝紅褐、今天＝綠、之後才要做的＝藍灰，與查房頁同一套 */}
+                            <span
+                              className={`ml-auto shrink-0 mt-0.5 text-[9px] font-bold uppercase tracking-widest empty:hidden ${
+                                n.day < today ? 'text-terracotta-500' : n.day === today ? 'text-sage-600' : 'text-clinical-500'
+                              }`}
+                              title={n.day < today ? `${n.day} 留下來還沒做的` : n.day === today ? '今天的待辦' : `排在 ${n.day} 要做的`}
+                            >
+                              {relDay(n.day)}
                             </span>
                           </li>
                         );
