@@ -111,6 +111,7 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [lastImportIds, setLastImportIds] = useState<string[] | null>(null);
   const [lastDischarged, setLastDischarged] = useState<{ id: string; status: Patient['status'] }[]>([]);
+  const [lastMoved, setLastMoved] = useState<{ id: string; bedNumber: string }[]>([]);
   const [undoStatus, setUndoStatus] = useState<{ id: string; name: string; prev: Patient['status'] } | null>(null);
   const [dischargePlan, setDischargePlan] = useState<{ id: string; name: string; date: string } | null>(null);
   const [statusPick, setStatusPick] = useState<{ patient: Patient; sel: Patient['status'] } | null>(null);
@@ -374,7 +375,14 @@ export default function App() {
         ? patients.filter(p => p.status !== 'Discharged' && p.chartNumber && !importedChartNos.has(p.chartNumber))
         : [];
 
-      if (toImport.length === 0 && toDischarge.length === 0) {
+      // 同一病歷號但床號不同 = 換床，直接更新原本那筆，不要開新病患
+      const rowByChartNo = new Map(importedPatients.filter(p => p.chartNumber).map(p => [p.chartNumber, p]));
+      const toMove = patients
+        .filter(p => p.status !== 'Discharged' && p.chartNumber)
+        .map(p => ({ patient: p, bedNumber: rowByChartNo.get(p.chartNumber)?.bedNumber }))
+        .filter((m): m is { patient: Patient; bedNumber: string } => !!m.bedNumber && m.bedNumber !== m.patient.bedNumber);
+
+      if (toImport.length === 0 && toDischarge.length === 0 && toMove.length === 0) {
         alert(`所有 ${importedPatients.length} 位病患已存在（依病歷號比對），略過匯入。`);
         setShowImportModal(false);
         return;
@@ -402,11 +410,15 @@ export default function App() {
       toDischarge.forEach(p =>
         batch.update(doc(db, 'patients', p.id), { status: 'Discharged', updatedAt: serverTimestamp() })
       );
+      toMove.forEach(m =>
+        batch.update(doc(db, 'patients', m.patient.id), { bedNumber: m.bedNumber, updatedAt: serverTimestamp() })
+      );
       await batch.commit();
       setLastImportIds(importedIds);
       setLastDischarged(toDischarge.map(p => ({ id: p.id, status: p.status })));
+      setLastMoved(toMove.map(m => ({ id: m.patient.id, bedNumber: m.patient.bedNumber })));
       setShowImportModal(false);
-      alert(`成功匯入 ${toImport.length} 位病患${skipped > 0 ? `，略過 ${skipped} 位已存在病患` : ''}${toDischarge.length > 0 ? `，${toDischarge.length} 位轉為出院` : ''}。`);
+      alert(`成功匯入 ${toImport.length} 位病患${skipped > 0 ? `，略過 ${skipped} 位已存在病患` : ''}${toMove.length > 0 ? `，${toMove.length} 位更新床號（${toMove.map(m => `${m.patient.name} ${m.patient.bedNumber}→${m.bedNumber}`).join('、')}）` : ''}${toDischarge.length > 0 ? `，${toDischarge.length} 位轉為出院` : ''}。`);
     } catch (error) {
       console.error("Error batch importing:", error);
     }
@@ -420,9 +432,13 @@ export default function App() {
       lastDischarged.forEach(({ id, status }) =>
         batch.update(doc(db, 'patients', id), { status, updatedAt: serverTimestamp() })
       );
+      lastMoved.forEach(({ id, bedNumber }) =>
+        batch.update(doc(db, 'patients', id), { bedNumber, updatedAt: serverTimestamp() })
+      );
       await batch.commit();
       setLastImportIds(null);
       setLastDischarged([]);
+      setLastMoved([]);
     } catch (error) {
       console.error("Error undoing import:", error);
       alert('撤銷失敗，請稍後再試。');
@@ -623,7 +639,7 @@ export default function App() {
               className="mx-8 mt-4 flex items-center justify-between bg-sage-50 border border-sage-200 rounded-xl px-5 py-3 text-sm"
             >
               <span className="text-sage-800 font-medium">
-                已匯入 {lastImportIds.length} 位病患{lastDischarged.length > 0 && `，${lastDischarged.length} 位轉為出院`}
+                已匯入 {lastImportIds.length} 位病患{lastMoved.length > 0 && `，${lastMoved.length} 位換床`}{lastDischarged.length > 0 && `，${lastDischarged.length} 位轉為出院`}
               </span>
               <div className="flex items-center gap-3">
                 <button

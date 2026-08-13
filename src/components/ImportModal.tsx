@@ -245,7 +245,7 @@ export default function ImportModal({ onImport, onCancel, onManualAdd }: ImportM
             <div className="space-y-4">
               <div className="flex gap-3 text-xs leading-relaxed text-natural-500 bg-natural-50 p-4 rounded-xl border border-natural-200">
                 <Info className="w-4 h-4 shrink-0 text-sage-500 mt-0.5" />
-                <span>上傳病患清單截圖（需包含床號、病歷號、姓名、年齡），AI 將自動解析並建立病患。已存在的病歷號自動略過；<strong>未出現在截圖中的在院病患將轉為出院</strong>（確認前會再詢問）。</span>
+                <span>上傳病患清單截圖（需包含床號、病歷號、姓名、年齡），AI 將自動解析並建立病患。已存在的病歷號自動略過，<strong>床號不同時會直接更新床號</strong>；<strong>未出現在截圖中的在院病患將轉為出院</strong>（確認前會再詢問）。</span>
               </div>
 
               {/* Drop zone */}
